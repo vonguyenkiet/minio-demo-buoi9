@@ -1,0 +1,19 @@
+
+=== Xác minh chứng chỉ ===
+Thời gian: Mon Oct 12 14:10:14 SEAST 2026
+
+--- Root CA (phải có CA:TRUE và keyCertSign) ---
+        Issuer: CN=Shop Local Demo Root CA
+        Subject: CN=Shop Local Demo Root CA
+                CA:TRUE
+
+--- Chứng chỉ domain (phải có CA:FALSE, serverAuth, SAN) ---
+        Issuer: CN=Shop Local Demo Root CA
+        Subject: CN=shop.local
+                CA:FALSE
+                DNS:shop.local
+
+--- Xác minh chuỗi ---
+D:/Hocki7/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi8/nginx-demo-buoi8/certs/ca/shop.local.crt: OK
+
+=== Hoàn thành ===

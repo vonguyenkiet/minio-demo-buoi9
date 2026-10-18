@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>CORS Test – Buổi 8</title>
+  <style>
+    body { font-family: monospace; padding: 2rem; background: #1a1a2e; color: #eee; }
+    h1 { color: #e94560; }
+    .result { background: #16213e; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+    .ok { color: #00b4d8; }
+    .err { color: #e94560; }
+    button { background: #e94560; color: #fff; border: none; padding: 0.5rem 1rem;
+             border-radius: 4px; cursor: pointer; margin: 0.5rem 0; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>CORS Test – Buổi 8</h1>
+  <p>Trang này chạy tại <code>http://localhost:8081</code> (cross-origin so với backend)</p>
+
+  <button onclick="testCrossOrigin()">1. Thử CROSS-ORIGIN (127.0.0.1:3001)</button>
+  <div id="cross-origin-result" class="result">Chưa chạy</div>
+
+  <button onclick="testSameOriginViaProxy()">2. Ghi chú: Same-origin qua NGINX</button>
+  <div id="same-origin-note" class="result">
+    Mở <code>http://shop.local/</code> trong tab mới, mở DevTools → Console,
+    rồi gọi <code>fetch('/api/products')</code>. Đây là same-origin → thành công.
+  </div>
+
+  <script>
+    async function testCrossOrigin() {
+      const el = document.getElementById('cross-origin-result');
+      el.textContent = 'Đang gửi request...';
+      try {
+        const resp = await fetch('http://127.0.0.1:3001/api/products');
+        const data = await resp.json();
+        el.innerHTML = `<span class="ok">✅ Kết quả: HTTP ${resp.status}</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        el.innerHTML += '<p class="ok">→ CORS không bị chặn (backend không khai báo CORS, nhưng trình duyệt cho phép nếu origin trùng hoặc CORS wildcard)</p>';
+      } catch (err) {
+        el.innerHTML = `<span class="err">❌ Lỗi CORS (kỳ vọng): ${err.message}</span>
+          <p>→ Request bị trình duyệt chặn vì backend không trả Access-Control-Allow-Origin.<br>
+          Kiểm tra DevTools → Console để xem chi tiết.</p>`;
+      }
+    }
+
+    function testSameOriginViaProxy() {
+      window.open('http://shop.local/', '_blank');
+    }
+  </script>
+</body>
+</html>

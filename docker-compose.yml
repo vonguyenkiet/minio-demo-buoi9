@@ -1,0 +1,230 @@
+name: minio-demo-buoi9
+
+services:
+
+  # ── PostgreSQL Database ──
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-product_db}
+      POSTGRES_USER: ${POSTGRES_USER:-product_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Buoi9DbSecretPassword2026!}
+    volumes:
+      - postgres_data_buoi9:/var/lib/postgresql/data
+      - ./backend/src/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/src/db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-product_user} -d ${POSTGRES_DB:-product_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app_network_buoi9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── MinIO Object Storage (S3 API & Web Console) ──
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56}
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-buoi9admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-Buoi9MinioRootPassword2026!}
+    volumes:
+      - minio_data_buoi9:/data
+    command: server /data --console-address ":9001"
+    ports:
+      # S3 API (cổng 9000) KHÔNG publish ra host – browser truy cập qua NGINX minio.shop.local
+      # MinIO Console chỉ bind trên loopback host cổng 9091 để không xung đột với Buổi 8 (9001)
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9091}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app_network_buoi9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Backend Node.js / Express Instance 1 ──
+  backend-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: minio-demo-buoi9-backend:latest
+    restart: unless-stopped
+    environment:
+      INSTANCE_NAME: ${BACKEND_1_NAME:-backend-1}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-product_db}
+      DB_USER: ${POSTGRES_USER:-product_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-Buoi9DbSecretPassword2026!}
+      # MinIO connection (internal docker network)
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9admin}
+      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9MinioRootPassword2026!}
+      MINIO_USE_SSL: "false"
+      MINIO_REGION: us-east-1
+      # Presigned URL signing config (public domain accessible via NGINX)
+      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-minio.shop.local}
+      MINIO_PUBLIC_PORT: ${MINIO_PUBLIC_PORT:-80}
+      MINIO_PUBLIC_USE_SSL: "false"
+      MINIO_PRESIGNED_EXPIRY: ${MINIO_PRESIGNED_EXPIRY:-300}
+      # Buckets
+      MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
+      MINIO_DEMO_BUCKETS: ${MINIO_DEMO_BUCKETS:-buoi9-assets,buoi9-assets-archive}
+      BACKEND_PORT: ${BACKEND_PORT:-3000}
+      UPLOAD_TEST_LIMIT_BYTES: ${UPLOAD_TEST_LIMIT_BYTES:-5242880}
+    ports:
+      - "127.0.0.1:3003:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app_network_buoi9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── Backend Node.js / Express Instance 2 ──
+  backend-2:
+    image: minio-demo-buoi9-backend:latest
+    restart: unless-stopped
+    pull_policy: never
+    environment:
+      INSTANCE_NAME: ${BACKEND_2_NAME:-backend-2}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-product_db}
+      DB_USER: ${POSTGRES_USER:-product_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-Buoi9DbSecretPassword2026!}
+      # MinIO connection (internal docker network)
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9admin}
+      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9MinioRootPassword2026!}
+      MINIO_USE_SSL: "false"
+      MINIO_REGION: us-east-1
+      # Presigned URL signing config
+      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-minio.shop.local}
+      MINIO_PUBLIC_PORT: ${MINIO_PUBLIC_PORT:-80}
+      MINIO_PUBLIC_USE_SSL: "false"
+      MINIO_PRESIGNED_EXPIRY: ${MINIO_PRESIGNED_EXPIRY:-300}
+      # Buckets
+      MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
+      MINIO_DEMO_BUCKETS: ${MINIO_DEMO_BUCKETS:-buoi9-assets,buoi9-assets-archive}
+      BACKEND_PORT: ${BACKEND_PORT:-3000}
+      UPLOAD_TEST_LIMIT_BYTES: ${UPLOAD_TEST_LIMIT_BYTES:-5242880}
+    ports:
+      - "127.0.0.1:3004:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      backend-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 35s
+    networks:
+      - app_network_buoi9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── NGINX Reverse Proxy (Frontend & MinIO S3 API) ──
+  nginx:
+    image: ${NGINX_IMAGE:-nginx:1.30-alpine}
+    restart: unless-stopped
+    volumes:
+      # Stage active – mặc định 06-minio-s3 hỗ trợ cả shop.local và minio.shop.local
+      - ./nginx/stages/${NGINX_STAGE:-06-minio-s3}.conf:/etc/nginx/conf.d/default.conf:ro
+      # Upstream pool – backend-1 & backend-2
+      - ./nginx/${NGINX_UPSTREAM:-upstream-docker.conf}:/etc/nginx/shop/upstream.conf:ro
+      # Frontend build dist
+      - ./frontend/dist:/var/www/shop:ro
+    ports:
+      - "80:80"
+    depends_on:
+      backend-1:
+        condition: service_healthy
+      backend-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app_network_buoi9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── CLI Container cho Scripts Quản trị MinIO (Tạo bucket, thiết lập Policy) ──
+  minio-admin:
+    profiles: ["tools"]
+    image: minio-demo-buoi9-backend:latest
+    environment:
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-buoi9admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-Buoi9MinioRootPassword2026!}
+      MINIO_BACKEND_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9appuser}
+      MINIO_BACKEND_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9AppSecretPassword2026!}
+      MINIO_DEMO_BUCKETS: ${MINIO_DEMO_BUCKETS:-buoi9-assets,buoi9-assets-archive}
+      MINIO_USE_SSL: "false"
+      MINIO_REGION: us-east-1
+    volumes:
+      - ./scripts:/app/scripts:ro
+    networks:
+      - app_network_buoi9
+
+volumes:
+  postgres_data_buoi9:
+  minio_data_buoi9:
+
+networks:
+  app_network_buoi9:
+    driver: bridge

@@ -1,0 +1,17 @@
+=== CORS Check ===
+Thời gian: Mon Oct 12 14:03:23 SEAST 2026
+
+--- Gọi backend-1 trực tiếp (127.0.0.1:3001) ---
+Response headers:
+HTTP/1.1 200 OK
+[0;32m✅ Backend KHÔNG trả header access-control-* (kỳ vọng)[0m
+
+--- Gọi qua NGINX (shop.local/api/products) ---
+[0;32m✅ NGINX KHÔNG thêm header access-control-* (kỳ vọng)[0m
+
+Hướng dẫn cross-origin manual (AC-07):
+  1. cd nginx-demo-buoi8 && python3 -m http.server 8081 --directory scripts/cors-test
+  2. Mở trình duyệt: http://localhost:8081
+  3. Quan sát console – kỳ vọng: CORS error (cross-origin bị chặn)
+  4. Mở http://shop.local/ → DevTools → cùng origin → thành công
+

@@ -1,0 +1,49 @@
+=== Body Limit Test ===
+Thời gian: Mon Oct 12 14:08:36 SEAST 2026
+
+Stage đang chạy: 04-bodysize
+
+--- Test: 2 MiB | Stage: 04-bodysize ---
+Kích thước: 2 MiB
+HTTP Status: 200
+Server: nginx/1.30.5
+X-Instance: backend-1
+Body (80 ký tự đầu): HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Server: nginx/1.30.5
+Date: Mon, 12 Oc
+Kết luận: 200 OK – nằm trong giới hạn
+
+--- Test: 6 MiB | Stage: 04-bodysize ---
+Kích thước: 6 MiB
+HTTP Status: 413
+Server: nginx/1.30.5
+X-Instance: backend-1
+Body (80 ký tự đầu): HTTP/1.1 100 Continue
+
+HTTP/1.1 413 Payload Too Large
+Server: nginx/1.30.5
+D
+Kết luận: 413 từ BACKEND (JSON có source:backend + X-Instance có)
+
+--- Test: 25 MiB | Stage: 04-bodysize ---
+Kích thước: 25 MiB
+HTTP Status: 413
+Server: nginx/1.30.5
+X-Instance: KHÔNG CÓ
+Body (80 ký tự đầu): HTTP/1.1 413 Request Entity Too Large
+Server: nginx/1.30.5
+Date: Mon, 12 Oct 2
+Kết luận: 413 từ NGINX (HTML, không có X-Instance)
+
+--- Test upload ảnh >5 MiB vào /api/products/1/image ---
+HTTP Status: 413
+X-Instance: backend-1
+Body: X-Powered-By: Express
+X-Instance: backend-1
+ETag: W/"3f-U8z+nSAXfE7F4S6rrQEqQWFm33Q"
+
+{"success":false,"source":"backend","message":"File too large"}
+
+=== Xong. Xem chi tiết: D:/Hocki7/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi8/nginx-demo-buoi8/docs/evidence/ac15-body-limit.txt ===

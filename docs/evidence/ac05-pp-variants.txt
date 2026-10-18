@@ -1,0 +1,37 @@
+=== proxy_pass Variants Test ===
+Thời gian: Mon Oct 12 14:02:42 SEAST 2026
+
+Lý thuyết:
+  /pp/nouri/ → http://backend_pool        → backend nhận path đầy đủ
+  /pp/slash/ → http://backend_pool/        → backend nhận phần sau prefix
+  /pp/apiuri/→ http://backend_pool/api/    → backend nhận /api/ + phần sau
+  /pp/bad    → http://backend_pool/        → backend nhận //... (double slash)
+
+--- A: /pp/nouri/ (no URI) ---
+Request:         /pp/nouri/api/whoami
+Giả thuyết:      /pp/nouri/api/whoami
+HTTP Status:     404
+Path backend:    /pp/nouri/api/whoami
+Body (80 ký):    {"success":false,"message":"Route GET /pp/nouri/api/whoami not found"}
+
+--- B: /pp/slash/ (URI=/) ---
+Request:         /pp/slash/api/whoami
+Giả thuyết:      /api/whoami
+HTTP Status:     200
+Path backend:    /whoami
+Body (80 ký):    {"success":true,"instance":"backend-2","method":"GET","originalUrl":"/api/whoami
+
+--- C: /pp/apiuri/ (URI=/api/) ---
+Request:         /pp/apiuri/whoami
+Giả thuyết:      /api/whoami
+HTTP Status:     200
+Path backend:    /whoami
+Body (80 ký):    {"success":true,"instance":"backend-1","method":"GET","originalUrl":"/api/whoami
+
+--- D: /pp/bad (no trailing /) ---
+Request:         /pp/bad/api/whoami
+Giả thuyết:      //api/whoami
+HTTP Status:     404
+Path backend:    //api/whoami
+Body (80 ký):    {"success":false,"message":"Route GET //api/whoami not found"}
+

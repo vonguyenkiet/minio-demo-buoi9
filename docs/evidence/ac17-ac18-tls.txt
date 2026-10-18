@@ -1,0 +1,7 @@
+=== AC-17 & AC-18 TLS Evidence ===
+--- openssl verify ---
+certs/ca/shop.local.crt: OK
+--- openssl s_client CAfile ---
+Verify return code: 0 (ok)
+--- curl --cacert with --ssl-no-revoke ---
+--- curl self-signed with -k ---

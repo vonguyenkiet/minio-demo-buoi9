@@ -1,0 +1,13 @@
+=== AC-23: System Endpoints Contract ===
+--- /api/health ---
+{"status":"ok","service":"product-api","instance":"backend-1","timestamp":"2026-10-12T07:28:48.171Z","uptime":276}
+
+--- /api/instance ---
+{"success":true,"instance":"backend-1","hostname":"f9e171c0cf56","pid":1,"startedAt":"2026-10-12T07:24:12.570Z","uptimeSeconds":276}
+
+--- /api/whoami ---
+{"success":true,"instance":"backend-1","method":"GET","originalUrl":"/api/whoami","path":"/whoami","host":"127.0.0.1:3001","headers":{"x-real-ip":null,"x-forwarded-for":null,"x-forwarded-proto":null},"remoteAddress":"172.18.0.1","expressIp":"172.18.0.1","trustProxy":false}
+
+--- POST /api/upload-test ---
+{"success":true,"receivedBytes":0,"limitBytes":5242880,"instance":"backend-1"}
+

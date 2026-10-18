@@ -1,0 +1,23 @@
+=== AC-13: Docker DNS & Isolation ===
+Server:		127.0.0.11
+Address:	127.0.0.11:53
+
+Non-authoritative answer:
+
+Non-authoritative answer:
+Name:	backend-1
+Address: 172.18.0.4
+
+
+--- Test localhost:3000 (Expect Fail) ---
+docker : wget: can't connect to remote host: Connection refused
+At line:1 char:203
++ ... ; $ac13 += (docker compose exec nginx wget -qO- -T 3 http://localhost ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (wget: can't con...nection refused:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+--- Test backend-1:3000 (Expect JSON) ---
+{"status":"ok","service":"product-api","instance":"backend-1","timestamp":"2026-10-12T07:28:37.456Z","uptime":265}
+
