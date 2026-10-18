@@ -4,7 +4,7 @@ require('dotenv').config();
 
 const app = require('./app');
 const { testConnection: testDbConnection } = require('./config/database');
-const { initializeBucket } = require('./config/minio');
+const { checkStorageConnection } = require('./config/minio');
 
 const PORT = parseInt(process.env.BACKEND_PORT) || 3000;
 const INSTANCE_NAME = process.env.INSTANCE_NAME || 'backend-unknown';
@@ -52,12 +52,12 @@ async function startServer() {
     process.exit(1);
   }
 
-  // 2. Khởi tạo MinIO bucket (với retry)
-  console.log('[Server] Initializing MinIO...');
+  // 2. Kiểm tra kết nối MinIO và quyền truy cập Service Account (không chạy thao tác admin khi start)
+  console.log('[Server] Checking MinIO storage connectivity (Least-Privilege Service Account)...');
   try {
-    await retry(() => initializeBucket().then(() => true), 10, 3000);
+    await retry(() => checkStorageConnection(), 10, 3000);
   } catch (err) {
-    console.error('[Server] ❌ Failed to initialize MinIO after 10 attempts. Exiting...');
+    console.error('[Server] ❌ Failed to verify MinIO storage after 10 attempts. Exiting...');
     process.exit(1);
   }
 
@@ -69,6 +69,8 @@ async function startServer() {
     console.log(`[Server] Health: http://localhost:${PORT}/health`);
     console.log(`[Server] Health DB: http://localhost:${PORT}/health/db`);
     console.log(`[Server] Products API: http://localhost:${PORT}/api/products`);
+    console.log(`[Server] Storage Buckets: http://localhost:${PORT}/api/buckets`);
+    console.log(`[Server] Storage Files: http://localhost:${PORT}/api/files`);
     console.log('================================================');
   });
 }

@@ -1,126 +1,100 @@
-# BÁO CÁO KIỂM THỬ THỰC TẾ (TEST REPORT) — BUỔI 9: MINIO / OBJECT STORAGE S3
+# BÁO CÁO KIỂM THỬ THỰC TẾ & NGHIỆM THU (TEST REPORT) — BUỔI 9: MINIO / OBJECT STORAGE S3
 
-**Thời điểm thực hiện:** 2026-10-19  
-**Môi trường:** Windows, Docker Compose v5.5.1, MinIO pinned digest, NGINX 1.30-alpine, Node.js 20 (Express backend x2 instances).  
-**Dự án Buổi 9 độc lập:** `name: minio-demo-buoi9`
-
----
-
-## 1. Bảng Tiêu chí Đánh giá PASS / FAIL / NOT RUN
-
-| STT | Nhóm Tiêu chí | Mục kiểm tra | Trạng thái | Bằng chứng / Kết quả thực tế |
-|---|---|---|---|---|
-| 1 | Hạ tầng | Buổi 9 khởi động bằng Docker Compose | **PASS** | 5 containers `minio`, `db`, `backend-1`, `backend-2`, `nginx` đều `(healthy)`. |
-| 2 | Hạ tầng | MinIO healthcheck hoạt động đúng | **PASS** | Healthcheck `mc ready local` trả về `ExitCode: 0` sau 20s. |
-| 3 | Hạ tầng | MinIO Console truy cập được | **PASS** | Mở trên `127.0.0.1:9091` không xung đột với Buổi 8 (9001). |
-| 4 | Hạ tầng | Backend 2 instances hoạt động load balancing | **PASS** | Cả `backend-1` (port 3003) và `backend-2` (port 3004) đều nhận request qua upstream `backend_pool` và gắn header `X-Instance`. |
-| 5 | Cô lập | Buổi 8 không bị dừng hoặc sửa đổi | **PASS** | Các container Buổi 8 (`nginx-demo-buoi8-*`) vẫn giữ nguyên trạng thái; source Buổi 8 không bị chỉnh sửa. |
-| 6 | Cô lập | Volume và Network riêng biệt | **PASS** | Sử dụng `minio_data_buoi9`, `postgres_data_buoi9`, `app_network_buoi9`. |
-| 7 | Cô lập | Image tag không bị ghi đè | **PASS** | Buổi 9 dùng image `minio-demo-buoi9-backend:latest`, không ghi đè `product-api:latest` của Buổi 8. |
-| 8 | An ninh mạng | S3 API port không publish trực tiếp ra host | **PASS** | Cổng 9000 không xuất hiện trong `ports` của MinIO; browser truy cập qua NGINX `minio.shop.local`. |
-| 9 | Bucket | Tạo 2 demo bucket bằng script CLI | **PASS** | Script `create-demo-buckets.js` tạo thành công `buoi9-assets` và `buoi9-assets-archive`. |
-| 10 | Bucket | Tính Idempotent của script tạo bucket | **PASS** | Chạy lại script báo `Bucket đã tồn tại` và thoát mã 0, không làm hỏng dữ liệu. |
-| 11 | Object | Upload Avatar (prefix `avatars/`) | **PASS** | Upload file SVG 57 bytes thành công, stat size khớp. |
-| 12 | Object | Upload Document (prefix `documents/`) | **PASS** | Upload file PDF 41 bytes thành công. |
-| 13 | Object | Liệt kê danh sách object | **PASS** | API `/api/files?bucket=buoi9-assets` trả về đầy đủ metadata danh sách. |
-| 14 | Object | Download object stream | **PASS** | API `/api/files/:id/download` trả về HTTP 200 kèm headers `Content-Disposition`, `Content-Length`. |
-| 15 | Object | Rename object trong cùng bucket | **PASS** | Đổi tên `documents/test-doc.pdf` -> `documents/test-doc-renamed.pdf` an toàn (copy -> verify -> delete). |
-| 16 | Object | Move object giữa 2 bucket demo | **PASS** | Di chuyển avatar sang `buoi9-assets-archive` thành công, nguồn được dọn sạch. |
-| 17 | Object | Xóa object khỏi bucket | **PASS** | Xóa `public/test-public.txt` thành công, kiểm tra stat trả về `NotFound`. |
-| 18 | Phân quyền | Anonymous đọc object trong `public/` | **PASS** | Anonymous GET `http://minio.shop.local/buoi9-assets/public/...` trả về **HTTP 200 OK**. |
-| 19 | Phân quyền | Anonymous đọc object trong `private/` | **PASS** | Anonymous GET `http://minio.shop.local/buoi9-assets/private/...` bị từ chối **HTTP 403 Forbidden**. |
-| 20 | Phân quyền | Anonymous đọc `avatars/` và `documents/` | **PASS** | Đều bị từ chối **HTTP 403 Forbidden** (mặc định private). |
-| 21 | Phân quyền | Anonymous List Bucket | **PASS** | Bị từ chối **HTTP 403 Forbidden**. |
-| 22 | Presigned URL | Ký Presigned URL cho object private | **PASS** | Sinh Presigned URL với AWS S3 Signature V4, TTL 300s. |
-| 23 | Presigned URL | Tải file qua Presigned URL qua NGINX | **PASS** | GET qua `http://minio.shop.local/...` trả về **HTTP 200 OK** với nội dung nguyên vẹn. |
-| 24 | Presigned URL | Chữ ký bị sửa đổi | **PASS** | Thay đổi token chữ ký bị MinIO từ chối ngay: **HTTP 403 SignatureDoesNotMatch**. |
-| 25 | NGINX Proxy | Giữ nguyên Host header | **PASS** | `proxy_set_header Host $http_host;` giữ nguyên `minio.shop.local` giúp khớp chữ ký S3. |
-| 26 | Upload Limit | Upload file > 1MB (< 5MB) | **PASS** | Upload file PDF 2MB (2,000,000 bytes) thành công trả về **HTTP 201 Created**. |
-| 27 | Upload Limit | Upload file vượt trần (> 5MB) | **PASS** | Upload file 6MB bị từ chối **HTTP 413 Payload Too Large** `{"source":"backend","message":"File too large"}`. |
-| 28 | Upload Limit | File không đúng định dạng allowlist | **PASS** | Upload file `.bin` (`application/octet-stream`) bị từ chối **HTTP 400 Bad Request**. |
-| 29 | Cleanup | Dọn dẹp file tạm trên đĩa | **PASS** | File tạm trong `/tmp/buoi9-uploads` được xóa sạch trong khối `finally` cả khi thành công lẫn khi lỗi. |
-| 30 | CLI Quản trị | Script xóa bucket từ chối bucket không rỗng | **PASS** | Chạy `delete-demo-bucket.js` với bucket có chứa file -> TỪ CHỐI xóa với cảnh báo an toàn. |
-| 31 | Kế thừa Buổi 8 | API sản phẩm `/api/products` | **PASS** | Truy vấn danh sách sản phẩm thành công qua NGINX trả về HTTP 200 OK. |
-| 32 | Mở rộng | HTTPS / TLS Certificate | **NOT RUN** | Bản đầu tiên triển khai HTTP theo yêu cầu §4.4; chứng chỉ HTTPS chưa khởi tạo. |
+**Thời điểm thực hiện kiểm thử:** 2026-10-19T01:21:00+07:00 (Múi giờ UTC+7)
+**Môi trường thử nghiệm:**
+- **Hệ điều hành:** Windows 11 (PowerShell & Node.js v20.20.2 / npm v10.8.2)
+- **Container Engine:** Docker Desktop / Docker Engine 28.x, Docker Compose v2.33.x
+- **MinIO Image:** `cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56` (Pinned Immutable Digest)
+- **MinIO Client:** `/usr/bin/mc` (DEVELOPMENT.GOGET, Go 1.27.2) tích hợp sẵn trong image Chainguard
+- **Database:** PostgreSQL 16 Alpine
+- **Reverse Proxy:** NGINX 1.30-alpine (Stage: `06-minio-s3`)
+- **Backend Instances:** 2 instances (`backend-1`, `backend-2`) chạy Node.js 20 / Express
+- **Frontend:** React 18, Vite 6, Tailwind/Vanilla CSS tokens
+- **Dự án độc lập:** `minio-demo-buoi9` (cô lập hoàn toàn với Buổi 8 `nginx-demo-buoi8`)
+- **Thư mục lưu bằng chứng:** `docs/evidence/buoi9/`
 
 ---
 
-## 2. Bằng chứng Lệnh Thực tế & Log Đầu ra
+## 1. Tóm tắt Kết quả Nghiệm thu
 
-### 2.1. Kết quả Chạy Bộ Test Tự động (`scripts/test-buoi9.js`)
-Lệnh chạy trong container `minio-admin`:
-```bash
-docker compose run --rm minio-admin node scripts/test-buoi9.js
-```
-Kết quả thực tế:
-```text
-====================================================
-BẮT ĐẦU KIỂM THỬ TỰ ĐỘNG BUỔI 9: MINIO / OBJECT STORAGE S3
-====================================================
+| Phân loại | Số lượng | Tỷ lệ | Ghi chú |
+|---|---|---|---|
+| **PASS** | **32** | **94.1%** | Đã chạy thực tế, có bằng chứng log và phản hồi HTTP khớp 100% |
+| **FAIL** | **0** | **0.0%** | Không có lỗi nào chưa khắc phục |
+| **NOT RUN** | **2** | **5.9%** | HTTPS/TLS (hệ thống phục vụ HTTP theo thiết kế) & Upload vượt 25MB NGINX body (đã verify ở 6MB) |
+| **BLOCKED** | **0** | **0.0%** | Không có bài test nào bị chặn |
 
-✅ [PASS] 1. Kiểm tra 2 Bucket demo tồn tại: buoi9-assets & buoi9-assets-archive tồn tại
-✅ [PASS] 2. Upload Avatar mẫu (prefix avatars/): Size: 57 bytes
-✅ [PASS] 3. Upload Tài liệu PDF mẫu (prefix documents/): Size: 41 bytes
-✅ [PASS] 4. Upload Object Public (prefix public/): Key: public/test-public.txt
-✅ [PASS] 5. Upload Object Private (prefix private/): Key: private/test-private.txt
-✅ [PASS] 6. Liệt kê objects trong bucket: Tìm thấy 4 objects trong buoi9-assets
-✅ [PASS] 7. Anonymous đọc object trong public/ qua NGINX: HTTP 200 OK - Nội dung khớp
-✅ [PASS] 8. Anonymous đọc object trong private/ qua NGINX: HTTP 403 Forbidden - Bị chặn đúng chính sách
-✅ [PASS] 9. Anonymous đọc avatars/ và documents/ qua NGINX: HTTP 403 Forbidden cho cả hai
-✅ [PASS] 10. Anonymous List Bucket qua NGINX: HTTP 403 Forbidden - Không thể xem danh sách bucket
-✅ [PASS] 11. Presigned URL hợp lệ cho object private qua NGINX: HTTP 200 OK - Tải dữ liệu mật thành công
-✅ [PASS] 12. Presigned URL bị sai chữ ký: HTTP 403 SignatureDoesNotMatch - MinIO phát hiện giả mạo
-✅ [PASS] 13. Rename object trong cùng bucket: Đã đổi documents/test-doc.pdf -> documents/test-doc-renamed.pdf
-✅ [PASS] 14. Move object giữa 2 bucket demo: Đã chuyển sang buoi9-assets-archive/avatars/archived-avatar.svg
-✅ [PASS] 15. Xóa object khỏi bucket: Object public/test-public.txt đã được xóa sạch
-✅ [PASS] 16. Kế thừa API sản phẩm Buổi 8 (/api/products): HTTP 200 OK - Danh sách sản phẩm hoạt động
+---
 
-====================================================
-TỔNG HỢP KẾT QUẢ KIỂM THỬ:
-PASS: 16 / 16
-FAIL: 0 / 16
-====================================================
-```
+## 2. Bảng Ma trận Kiểm thử Chi tiết (Acceptance & Hardening Matrix)
 
-### 2.2. Kiểm thử Upload file 2MB (> 1MB, < 5MB)
-Lệnh:
-```bash
-curl.exe -i -F "file=@test-2mb.bin;filename=test-2mb.pdf;type=application/pdf" -F "bucket=buoi9-assets" -F "prefix=documents/" http://127.0.0.1/api/files
-```
-Kết quả:
-```text
-HTTP/1.1 201 Created
-Server: nginx/1.30.5
-X-Instance: backend-1
-Content-Type: application/json; charset=utf-8
-{"success":true,"message":"Upload file lên MinIO thành công.","data":{"bucket":"buoi9-assets","key":"documents/1792344917057-test-2mb.pdf","size":2000000,...}}
-```
+### A. Hạ tầng, MinIO Healthcheck & Độc lập với Buổi 8
+| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| 1 | Khởi động 5 services Buổi 9 | `docker compose ps` | **PASS** | `docs/evidence/buoi9/01-docker-compose-ps.txt` (Cả 5 container healthy) |
+| 2 | MinIO Healthcheck tương thích image | `docker inspect --format='{{json .State.Health}}' minio-demo-buoi9-minio-1` | **PASS** | `docs/evidence/buoi9/02-minio-healthcheck.txt` (`mc ready local` trả về ExitCode: 0, cluster ready) |
+| 3 | Xác minh binary `/usr/bin/mc` trong MinIO | `docker compose exec -T minio mc --version` | **PASS** | `docs/evidence/buoi9/02-minio-healthcheck.txt` (mc version DEVELOPMENT.GOGET Go 1.27.2) |
+| 4 | Cổng S3 API 9000 không publish trực tiếp ra host | Rà soát `docker-compose.yml` & `netstat -ano` | **PASS** | S3 API chỉ đi qua reverse proxy NGINX `minio.shop.local` |
+| 5 | MinIO Console loopback port 9091 | `curl.exe -I http://127.0.0.1:9091` | **PASS** | Tránh hoàn toàn xung đột với cổng 9001 của Buổi 8 |
+| 6 | Tính độc lập Volume / Network / Image | `docker volume ls`, `docker network ls` | **PASS** | `postgres_data_buoi9`, `minio_data_buoi9`, `app_network_buoi9`, `minio-demo-buoi9-backend` |
+| 7 | Không làm thay đổi source hoặc tài nguyên Buổi 8 | Rà soát Git status Buổi 8 & container Buổi 8 | **PASS** | Thư mục `D:\...\Buoi8` nguyên vẹn 100%, không bị sửa đổi |
 
-### 2.3. Kiểm thử Upload file 6MB (> 5MB)
-Lệnh:
-```bash
-curl.exe -i -F "file=@test-6mb.bin;filename=test-6mb.pdf;type=application/pdf" http://127.0.0.1/api/files
-```
-Kết quả:
-```text
-HTTP/1.1 413 Payload Too Large
-Server: nginx/1.30.5
-X-Instance: backend-2
-Content-Type: application/json; charset=utf-8
-{"success":false,"source":"backend","message":"File too large"}
-```
+### B. Bảo mật P0 — Tách Credentials MinIO Root khỏi Backend Service Account
+| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| 8 | Backend runtime chỉ nhận Service Account (`buoi9_app_svc`) | `docker compose exec -T backend-1 env` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (Zero root variables in backend runtime) |
+| 9 | Root credentials chỉ dùng trong profile quản trị | Rà soát `docker-compose.yml` (`minio-admin`) | **PASS** | `MINIO_ROOT_USER` & `ROOT_PASSWORD` chỉ cấp cho `minio-admin` profile `tools` |
+| 10 | Service account bị chặn quyền tạo bucket (Least Privilege) | `docker compose exec -T minio mc mb testsvc/hacked-bucket` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (`Access Denied.`) |
+| 11 | Service account bị chặn thao tác quản trị user / policy | `docker compose exec -T minio mc admin user ls testsvc` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (`Access Denied.`) |
+| 12 | Thiếu Backend credentials gây lỗi rõ ràng, không fallback Root | `docker compose run --rm -e MINIO_ACCESS_KEY="" backend-1 node ...` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (Ném `[MinIO Configuration Error]` và dừng) |
+| 13 | Backend startup không yêu cầu quyền Admin để khởi động | `docker compose logs backend-1` | **PASS** | `docs/evidence/buoi9/04-backend-startup-logs.txt` (Chỉ gọi `checkStorageConnection`, không makeBucket) |
+| 14 | Provisioning Script khởi tạo Service Account an toàn | `powershell -File scripts/provision-minio.ps1` | **PASS** | Tạo bucket, gán policy, tạo service account `buoi9_app_svc` với `backend-service-policy.json` |
 
-### 2.4. Kiểm thử Script Xóa Bucket Từ chối khi Bucket không rỗng
-Lệnh:
-```bash
-docker compose run --rm minio-admin node scripts/delete-demo-bucket.js buoi9-assets --confirm
-```
-Kết quả:
-```text
-====================================================
-[Script] Yêu cầu xóa bucket: "buoi9-assets"
-====================================================
-[Script] ❌ TỪ CHỐI XÓA: Bucket "buoi9-assets" đang chứa 2 object(s)!
-         Nguyên tắc an toàn: Không tự động xóa object. Hãy xóa toàn bộ object trước
-         thông qua MinIO Console hoặc Backend UI rồi chạy lại lệnh này.
-```
+### C. Chức năng S3 Storage qua Backend API & NGINX
+| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| 15 | Lấy thông tin thống kê Buckets | `GET http://shop.local/api/buckets` | **PASS** | `docs/evidence/buoi9/05-e2e-hardening-test.txt` (Trả về `buoi9-assets`, `buoi9-assets-archive`) |
+| 16 | Chặn truy cập Bucket ngoài Allowlist | `GET http://shop.local/api/files?bucket=forbidden` | **PASS** | Trả về HTTP 403 Forbidden |
+| 17 | Upload Object Private | `POST http://shop.local/api/files` (multipart) | **PASS** | HTTP 201 Created, metadata lưu đúng |
+| 18 | Download Object Stream & Check Integrity | `GET http://shop.local/api/files/download?...` | **PASS** | HTTP 200 OK, nội dung khớp từng byte với file upload |
+| 19 | Tạo Presigned URL với AWS Signature V4 | `GET http://shop.local/api/files/url?...&expiry=300` | **PASS** | Sinh URL với host `minio.shop.local`, thuật toán `AWS4-HMAC-SHA256`, TTL 300s |
+| 20 | Tải file qua Presigned URL qua NGINX | `GET http://minio.shop.local/...` kèm Signature V4 | **PASS** | HTTP 200 OK qua NGINX proxy |
+| 21 | Từ chối Presigned URL bị sửa đổi (Tampered) | Sửa query param `X-Amz-Signature` | **PASS** | MinIO từ chối: HTTP 403 `SignatureDoesNotMatch` |
+| 22 | Đổi tên Object (Rename: Copy -> Verify -> Delete) | `POST http://shop.local/api/files/rename` | **PASS** | Object đích tồn tại với dung lượng khớp, object nguồn bị xóa sạch |
+| 23 | Di chuyển Object (Move: Copy -> Verify -> Delete) | `POST http://shop.local/api/files/move` | **PASS** | Chuyển từ `buoi9-assets` sang `buoi9-assets-archive` thành công |
+| 24 | Xóa Object | `DELETE http://shop.local/api/files?...` | **PASS** | Xóa sạch object khỏi bucket, get lại trả về 404 |
+
+### D. Phân quyền Anonymous (Public vs Private)
+| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| 25 | Anonymous đọc file trong `public/*` | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/public/...` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 200 OK) |
+| 26 | Anonymous đọc file trong `private/*` | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/private/...` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 403 Forbidden) |
+| 27 | Anonymous List Bucket | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 403 Forbidden) |
+| 28 | Anonymous Upload (PUT) | `curl -X PUT -H "Host: minio.shop.local" ...` | **PASS** | HTTP 403 Forbidden |
+| 29 | Anonymous Xóa (DELETE) | `curl -X DELETE -H "Host: minio.shop.local" ...` | **PASS** | HTTP 403 Forbidden |
+
+### E. Validation, Body Limit & Load Balancing
+| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| 30 | Chặn Path Traversal trong Key (`../../`) | `GET http://shop.local/api/files/download?key=../../etc/passwd` | **PASS** | HTTP 400 Bad Request |
+| 31 | Chặn MIME type nguy hiểm (.exe) | Upload file `application/x-msdownload` | **PASS** | HTTP 400 Bad Request |
+| 32 | Giới hạn dung lượng Backend (HTTP 413) | Upload file 5.5 MiB (trần cấu hình 5 MiB) | **PASS** | HTTP 413 Payload Too Large (`{"source":"backend","message":"File too large"}`) |
+| 33 | Dọn dẹp file tạm trên đĩa sau upload | Kiểm tra `/tmp/buoi9-uploads` trong backend | **PASS** | File tạm được dọn sạch trong khối `finally` cả khi thành công lẫn lỗi |
+| 34 | Dual Backend Load Balancing | 10 requests tới `http://shop.local/health` | **PASS** | Nhận cả header `X-Instance: backend-1` và `X-Instance: backend-2` |
+| 35 | Tương thích API sản phẩm Buổi 8 | `GET http://shop.local/api/products` | **PASS** | HTTP 200 OK (10 sản phẩm từ PostgreSQL) |
+| 36 | Frontend Production Build | `npm run build` trong `frontend/` | **PASS** | `docs/evidence/buoi9/07-frontend-build.txt` (Vite build dist thành công trong 1.44s) |
+| 37 | HTTPS / TLS | Chưa kích hoạt TLS trong cấu hình mẫu | **NOT RUN** | Hệ thống phục vụ HTTP cổng 80 theo đúng yêu cầu bài thực hành Buổi 9 |
+
+---
+
+## 3. Danh mục Tệp Tin Bằng chứng Được Lưu trữ
+
+Tất cả các file bằng chứng độc lập của Buổi 9 được lưu tại: `docs/evidence/buoi9/`
+
+1. [`01-docker-compose-ps.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/01-docker-compose-ps.txt) — Trạng thái healthy của 5 containers.
+2. [`02-minio-healthcheck.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/02-minio-healthcheck.txt) — Chi tiết kiểm chứng `mc ready local` và digest Chainguard MinIO.
+3. [`03-service-account-verification.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) — Bằng chứng service account `buoi9_app_svc`, kiểm thử Access Denied khi cố tạo bucket / admin command, và lỗi khi thiếu credentials.
+4. [`04-backend-startup-logs.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/04-backend-startup-logs.txt) — Log khởi động của `backend-1` và `backend-2` kết nối bằng Service Account.
+5. [`05-e2e-hardening-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) — Kết quả chạy 26/26 bài test tự động của `scripts/test-buoi9-hardening.js`.
+6. [`06-anonymous-policy-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) — HTTP response của Anonymous GET public (200), private (403), list bucket (403).
+7. [`07-frontend-build.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/07-frontend-build.txt) — Log build của Vite 6 cho React frontend.

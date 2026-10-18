@@ -1,0 +1,21 @@
+============================================================
+MinIO Healthcheck Verification (Pinned Digest & /usr/bin/mc)
+============================================================
+Timestamp: 2026-10-18T18:22:27.647Z
+
+[1] Pinned Image:
+'cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56'
+
+[2] mc Binary Version inside Container:
+mc version DEVELOPMENT.GOGET (commit-id=DEVELOPMENT.GOGET)
+Runtime: go1.27.2 linux/amd64
+Copyright (c) 2015-0000 MinIO, Inc.
+License GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>
+
+[3] Docker Container Health Status:
+template parsing error: template: :1: unclosed action
+Command failed: docker inspect --format='{{json .State.Health}}' minio-demo-buoi9-minio-1
+template parsing error: template: :1: unclosed action
+
+[4] Manual mc ready local execution check:
+The cluster 'local' is ready

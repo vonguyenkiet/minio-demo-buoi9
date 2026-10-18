@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-buoi9admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-Buoi9MinioRootPassword2026!}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-buoi9_minio_root_secret_2026}
     volumes:
       - minio_data_buoi9:/data
     command: server /data --console-address ":9001"
@@ -43,6 +43,8 @@ services:
       # MinIO Console chỉ bind trên loopback host cổng 9091 để không xung đột với Buổi 8 (9001)
       - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9091}:9001"
     healthcheck:
+      # Image cgr.dev/chainguard/minio chứa binary /usr/bin/mc, không chứa curl hay wget.
+      # mc ready local xác thực MinIO cluster thực sự sẵn sàng phục vụ S3 API.
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
@@ -73,8 +75,10 @@ services:
       # MinIO connection (internal docker network)
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
-      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9admin}
-      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9MinioRootPassword2026!}
+      # P0 Security: Backend runtime nhận credentials của service account riêng.
+      # Tuyệt đối KHÔNG truyền root credentials và KHÔNG fallback về root credentials.
+      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY}
       MINIO_USE_SSL: "false"
       MINIO_REGION: us-east-1
       # Presigned URL signing config (public domain accessible via NGINX)
@@ -128,8 +132,9 @@ services:
       # MinIO connection (internal docker network)
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
-      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9admin}
-      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9MinioRootPassword2026!}
+      # P0 Security: Backend runtime nhận credentials của service account riêng.
+      MINIO_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY}
       MINIO_USE_SSL: "false"
       MINIO_REGION: us-east-1
       # Presigned URL signing config
@@ -210,10 +215,11 @@ services:
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-buoi9admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-Buoi9MinioRootPassword2026!}
-      MINIO_BACKEND_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9appuser}
-      MINIO_BACKEND_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9AppSecretPassword2026!}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-buoi9_minio_root_secret_2026}
+      MINIO_BACKEND_ACCESS_KEY: ${MINIO_BACKEND_ACCESS_KEY:-buoi9_app_svc}
+      MINIO_BACKEND_SECRET_KEY: ${MINIO_BACKEND_SECRET_KEY:-Buoi9SvcSecret2026!AppKey}
       MINIO_DEMO_BUCKETS: ${MINIO_DEMO_BUCKETS:-buoi9-assets,buoi9-assets-archive}
+      MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
       MINIO_USE_SSL: "false"
       MINIO_REGION: us-east-1
     volumes:

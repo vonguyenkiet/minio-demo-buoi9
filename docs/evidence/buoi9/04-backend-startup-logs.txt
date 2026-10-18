@@ -1,0 +1,88 @@
+============================================================
+Backend Startup Logs (Least-Privilege Service Account Verified)
+============================================================
+Timestamp: 2026-10-18T18:22:32.858Z
+
+--- backend-1 logs ---
+backend-1-1  | [Server] ✅ backend-1 is running!
+backend-1-1  | [Server] Port: 3000
+backend-1-1  | [Server] Health: http://localhost:3000/health
+backend-1-1  | [Server] Health DB: http://localhost:3000/health/db
+backend-1-1  | [Server] Products API: http://localhost:3000/api/products
+backend-1-1  | [Server] Storage Buckets: http://localhost:3000/api/buckets
+backend-1-1  | [Server] Storage Files: http://localhost:3000/api/files
+backend-1-1  | ================================================
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:18:46 +0000] "GET /health HTTP/1.1" 200 112 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:19:01 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:19:16 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:19:31 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:19:47 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:20:02 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:20:17 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:20:32 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:20:47 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:20:58 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "GET /api/buckets HTTP/1.1" 200 221 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "POST /api/files HTTP/1.1" 201 287 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "GET /api/files/url?bucket=buoi9-assets&key=private%2Fe2e-test-1792347661872.txt&expiry=300 HTTP/1.1" 200 554 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "POST /api/files/rename HTTP/1.1" 200 279 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | [StorageController] downloadFile error: Object "private/e2e-test-1792347661872.txt" không tồn tại trong bucket "buoi9-assets".
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/files/download?bucket=buoi9-assets&key=private%2Fe2e-test-1792347661872.txt HTTP/1.1" 404 125 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/files/download?bucket=buoi9-assets-archive&key=archive%2Fmoved-1792347662094.txt HTTP/1.1" 200 122 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "DELETE /api/files?bucket=buoi9-assets-archive&key=archive%2Fmoved-1792347662094.txt HTTP/1.1" 200 255 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | [StorageController] downloadFile error: Object key "../../etc/passwd" không hợp lệ (chứa ký tự điều khiển hoặc traversal).
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/files/download?bucket=buoi9-assets&key=../../etc/passwd HTTP/1.1" 400 131 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "POST /api/files HTTP/1.1" 413 63 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:21:17 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:21:32 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:21:47 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:22:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-1-1  | 127.0.0.1 - - [18/Oct/2026:18:22:17 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+
+--- backend-2 logs ---
+backend-2-1  | [Server] Health DB: http://localhost:3000/health/db
+backend-2-1  | [Server] Products API: http://localhost:3000/api/products
+backend-2-1  | [Server] Storage Buckets: http://localhost:3000/api/buckets
+backend-2-1  | [Server] Storage Files: http://localhost:3000/api/files
+backend-2-1  | ================================================
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:18:52 +0000] "GET /health HTTP/1.1" 200 112 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:19:07 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:19:22 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:19:37 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:19:52 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:20:07 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:20:23 +0000] "GET /health HTTP/1.1" 200 113 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:20:38 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:20:53 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | [Database] ✅ Connected to PostgreSQL successfully
+backend-2-1  | [MinIO] ✅ Connected to MinIO successfully
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:20:58 +0000] "GET /health/db HTTP/1.1" 200 143 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | [StorageController] listFiles error: Bucket "unauthorized-secret-bucket" không nằm trong danh sách cho phép [buoi9-assets, buoi9-assets-archive, product-images].
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "GET /api/files?bucket=unauthorized-secret-bucket HTTP/1.1" 403 161 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "GET /api/files/download?bucket=buoi9-assets&key=private%2Fe2e-test-1792347661872.txt HTTP/1.1" 200 122 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:01 +0000] "POST /api/files HTTP/1.1" 201 357 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/files/download?bucket=buoi9-assets&key=private%2Fe2e-renamed-1792347662010.txt HTTP/1.1" 200 122 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "POST /api/files/move HTTP/1.1" 200 347 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | [StorageController] downloadFile error: Object "private/e2e-renamed-1792347662010.txt" không tồn tại trong bucket "buoi9-assets".
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/files/download?bucket=buoi9-assets&key=private%2Fe2e-renamed-1792347662010.txt HTTP/1.1" 404 128 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "DELETE /api/files?bucket=buoi9-assets&key=public%2Fe2e-public-1792347661955.txt HTTP/1.1" 200 247 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "POST /api/files HTTP/1.1" 400 185 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /health HTTP/1.1" 200 114 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | [Database] Query executed in 11ms, rows: 10
+backend-2-1  | 172.19.0.6 - - [18/Oct/2026:18:21:02 +0000] "GET /api/products HTTP/1.1" 200 3243 "-" "-" xrip=172.19.0.1 xff=172.19.0.1
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:21:08 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:21:23 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:21:38 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:21:53 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:22:08 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-
+backend-2-1  | 127.0.0.1 - - [18/Oct/2026:18:22:23 +0000] "GET /health HTTP/1.1" 200 114 "-" "curl/8.22.0" xrip=- xff=-

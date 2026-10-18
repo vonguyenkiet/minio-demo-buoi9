@@ -1,0 +1,72 @@
+============================================================
+Anonymous Access Policy Verification via minio.shop.local
+============================================================
+Timestamp: 2026-10-18T18:22:37.064Z
+
+[1] Anonymous GET public prefix (Must return HTTP 200 OK):
+HTTP/1.1 200 OK
+Server: nginx/1.30.5
+Date: Sun, 18 Oct 2026 18:22:36 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 179
+Connection: keep-alive
+Accept-Ranges: bytes
+ETag: "2752dc863699ef99a0426050482ee2bc"
+Last-Modified: Sun, 18 Oct 2026 17:42:41 GMT
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Vary: Origin
+Vary: Accept-Encoding
+X-Amz-Id-2: dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8
+X-Amz-Request-Id: 18DFB2C9E34529CE
+X-Content-Type-Options: nosniff
+X-Ratelimit-Limit: 3125
+X-Ratelimit-Remaining: 3125
+X-Xss-Protection: 1; mode=block
+x-amz-meta-original-name: public-announcement-1511.txt
+x-amz-meta-uploaded-at: 2026-10-18T17:42:41.564Z
+
+[THÔNG BÁO CÔNG KHAI - BUỔI 9]
+Đây là file public trong prefix public/.
+Bất kỳ ai cũng có thể đọc trực tiếp không cần Presigned URL qua minio.shop.local!
+
+[2] Anonymous GET private prefix (Must return HTTP 403 Forbidden):
+HTTP/1.1 403 Forbidden
+Server: nginx/1.30.5
+Date: Sun, 18 Oct 2026 18:22:36 GMT
+Content-Type: application/xml
+Content-Length: 347
+Connection: keep-alive
+Accept-Ranges: bytes
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Vary: Origin
+Vary: Accept-Encoding
+X-Amz-Id-2: dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8
+X-Amz-Request-Id: 18DFB2C9E8310724
+X-Content-Type-Options: nosniff
+X-Ratelimit-Limit: 3125
+X-Ratelimit-Remaining: 3125
+X-Xss-Protection: 1; mode=block
+
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied.</Message><Key>private/test.txt</Key><BucketName>buoi9-assets</BucketName><Resource>/buoi9-assets/private/test.txt</Resource><RequestId>18DFB2C9E8310724</RequestId><HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId></Error>
+
+[3] Anonymous GET / (ListBucket) (Must return HTTP 403 Forbidden):
+HTTP/1.1 403 Forbidden
+Server: nginx/1.30.5
+Date: Sun, 18 Oct 2026 18:22:37 GMT
+Content-Type: application/xml
+Content-Length: 304
+Connection: keep-alive
+Accept-Ranges: bytes
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Vary: Origin
+Vary: Accept-Encoding
+X-Amz-Id-2: dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8
+X-Amz-Request-Id: 18DFB2C9ED1C3D0C
+X-Content-Type-Options: nosniff
+X-Ratelimit-Limit: 3125
+X-Ratelimit-Remaining: 3125
+X-Xss-Protection: 1; mode=block
+
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied.</Message><BucketName>buoi9-assets</BucketName><Resource>/buoi9-assets/</Resource><RequestId>18DFB2C9ED1C3D0C</RequestId><HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId></Error>

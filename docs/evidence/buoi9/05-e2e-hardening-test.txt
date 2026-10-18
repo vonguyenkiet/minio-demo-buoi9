@@ -1,0 +1,56 @@
+==============================================================================
+🚀 BẮT ĐẦU CHẠY TOÀN BỘ BÀI TEST CHẤP NHẬN & BẢO MẬT BUỔI 9
+⏰ Thời gian bắt đầu: 2026-10-18T18:22:32.981Z
+==============================================================================
+
+--- PHẦN 1: HEALTH CHECKS & KẾT NỐI DỊCH VỤ ---
+✅ [PASS] [Health] Backend Process Health (/health) - Instance: backend-1
+✅ [PASS] [Health] DB & MinIO Health (/health/db) - PostgreSQL & MinIO both OK
+✅ [PASS] [Health] NGINX Reverse Proxy Health (/nginx-health) - Stage: 06-minio-s3
+
+--- PHẦN 2: BẢO MẬT P0 - MINIO CREDENTIALS SEPARATION ---
+✅ [PASS] [Security-P0] Backend Runtime Environment Isolation - Backend runtime uses buoi9_app_svc, zero root credentials present
+✅ [PASS] [Security-P0] Service Account Least Privilege (makeBucket blocked) - Access Denied returned as expected
+✅ [PASS] [Security-P0] No Fallback to Root on Missing Backend Credentials - Explicit configuration error thrown, zero fallback to root
+
+--- PHẦN 3: BUCKET LISTING & ALLOWLIST VALIDATION ---
+✅ [PASS] [Storage-API] Get Demo Buckets Summary (/api/buckets) - Buckets: buoi9-assets, buoi9-assets-archive
+✅ [PASS] [Storage-API] Enforce Bucket Allowlist (Forbidden Bucket) - HTTP 403 Forbidden correctly returned
+
+--- PHẦN 4: OBJECT CRUD (UPLOAD, INFO, DOWNLOAD) ---
+✅ [PASS] [Storage-API] Upload Private Object (/api/files) - Key: private/e2e-test-1792347756428.txt, Size: 122 bytes
+✅ [PASS] [Storage-API] Download Object & Integrity Check (/api/files/download) - Downloaded content matches uploaded content exactly
+
+--- PHẦN 5: PRESIGNED URL & AWS SIGNATURE V4 ---
+✅ [PASS] [Presigned-URL] Generate Presigned URL with AWS SigV4 (300s TTL) - Host: minio.shop.local, Algorithm: AWS4-HMAC-SHA256
+✅ [PASS] [Presigned-URL] Fetch Private Object via Presigned URL - HTTP 200 OK via minio.shop.local reverse proxy
+✅ [PASS] [Presigned-URL] Reject Tampered Presigned URL - HTTP 403 Forbidden (SignatureDoesNotMatch)
+
+--- PHẦN 6: ANONYMOUS ACCESS CONTROL (PUBLIC VS PRIVATE) ---
+✅ [PASS] [Security-Anonymous] Anonymous GET on Public Prefix (public/*) - HTTP 200 OK as permitted by policy
+✅ [PASS] [Security-Anonymous] Anonymous GET on Private Object Blocked - HTTP 403 Forbidden as required
+✅ [PASS] [Security-Anonymous] Anonymous ListBucket Blocked - HTTP 403 Forbidden
+✅ [PASS] [Security-Anonymous] Anonymous PutObject Blocked - HTTP 403 Forbidden
+✅ [PASS] [Security-Anonymous] Anonymous DeleteObject Blocked - HTTP 403 Forbidden
+
+--- PHẦN 7: RENAME & MOVE AN TOÀN (COPY -> VERIFY -> DELETE) ---
+✅ [PASS] [Storage-Ops] Rename Object (Safe Copy -> Verify -> Delete) - Renamed private/e2e-test-1792347756428.txt -> private/e2e-renamed-1792347756523.txt
+✅ [PASS] [Storage-Ops] Move Object Across Buckets (buoi9-assets -> archive) - Moved to buoi9-assets-archive/archive/moved-1792347756567.txt
+✅ [PASS] [Storage-Ops] Delete Object (/api/files) - Cleaned up buoi9-assets-archive/archive/moved-1792347756567.txt
+
+--- PHẦN 8: VALIDATION & GIỚI HẠN DUNG LƯỢNG (HTTP 413) ---
+✅ [PASS] [Validation] Path Traversal Prevention in Key (../../) - HTTP 400 Bad Request
+✅ [PASS] [Validation] MIME Type & Extension Allowlist Filter - HTTP 400 Bad Request returned for unauthorized MIME
+✅ [PASS] [Validation] Upload Size Limit Enforcement (HTTP 413) - HTTP 413 Payload Too Large correctly returned
+
+--- PHẦN 9: LOAD BALANCING & BUỔI 8 COMPATIBILITY ---
+✅ [PASS] [Load-Balancing] Dual Backend Load Balancing (backend-1 & backend-2) - Instances served: backend-2, backend-1
+✅ [PASS] [Buoi8-Compat] Legacy Products API (/api/products) - Fetched 10 products successfully
+
+==============================================================================
+📊 TỔNG KẾT KẾT QUẢ KIỂM THỬ:
+   - TỔNG CỘNG: 26 bài test
+   - PASS     : 26
+   - FAIL     : 0
+==============================================================================
+

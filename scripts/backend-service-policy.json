@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowListAndLocationOnDemoBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::buoi9-assets",
+        "arn:aws:s3:::buoi9-assets-archive",
+        "arn:aws:s3:::product-images"
+      ]
+    },
+    {
+      "Sid": "AllowObjectOperationsOnDemoBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::buoi9-assets/*",
+        "arn:aws:s3:::buoi9-assets-archive/*",
+        "arn:aws:s3:::product-images/*"
+      ]
+    }
+  ]
+}

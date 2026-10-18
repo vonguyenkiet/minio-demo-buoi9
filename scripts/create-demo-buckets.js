@@ -2,8 +2,8 @@
 
 /**
  * Script: create-demo-buckets.js
- * Mục đích: Tạo 2 bucket demo (buoi9-assets, buoi9-assets-archive) bằng MinIO SDK
- * Nơi chạy: Chạy bên trong container CLI nội bộ (minio-admin)
+ * Mục đích: Tạo các bucket (product-images, buoi9-assets, buoi9-assets-archive) bằng MinIO Admin credentials
+ * Nơi chạy: Chạy bên trong container CLI nội bộ (minio-admin) hoặc script quản trị
  * Tính chất: Idempotent, chỉ thao tác trên allowlist, không xóa, không ghi đè, không in secrets.
  */
 
@@ -30,16 +30,18 @@ const client = new Minio.Client({
   region,
 });
 
-const ALLOWLIST_BUCKETS = (process.env.MINIO_DEMO_BUCKETS || 'buoi9-assets,buoi9-assets-archive')
+const demoBuckets = (process.env.MINIO_DEMO_BUCKETS || 'buoi9-assets,buoi9-assets-archive')
   .split(',')
   .map((b) => b.trim())
   .filter(Boolean);
+const legacyBucket = process.env.MINIO_BUCKET || 'product-images';
+const ALLOWLIST_BUCKETS = [...new Set([legacyBucket, ...demoBuckets])];
 
 async function main() {
   console.log('====================================================');
-  console.log('[Script] Bắt đầu khởi tạo Demo Buckets (Allowlist only)');
+  console.log('[Script] Bắt đầu khởi tạo Demo Buckets (Admin credentials)');
   console.log(`[Script] Endpoint: ${endpoint}:${port}`);
-  console.log(`[Script] Buckets: ${ALLOWLIST_BUCKETS.join(', ')}`);
+  console.log(`[Script] Allowlist Buckets: ${ALLOWLIST_BUCKETS.join(', ')}`);
   console.log('====================================================');
 
   let hasError = false;
@@ -48,7 +50,7 @@ async function main() {
     try {
       const exists = await client.bucketExists(bucket);
       if (exists) {
-        console.log(`[Script] ℹ️  Bucket "${bucket}" ĐÃ TỒN TẠI (giữ nguyên, không ghi đè).`);
+        console.log(`[Script] ℹ️  Bucket "${bucket}" ĐÃ TỒN TẠI (giữ nguyên dữ liệu).`);
       } else {
         await client.makeBucket(bucket, region);
         console.log(`[Script] ✅ Bucket "${bucket}" ĐÃ TẠO MỚI THÀNH CÔNG (region: ${region}).`);
@@ -65,7 +67,7 @@ async function main() {
     process.exit(1);
   } else {
     console.log('====================================================');
-    console.log('[Script] ✅ Hoàn tất khởi tạo demo buckets!');
+    console.log('[Script] ✅ Hoàn tất kiểm tra / tạo demo buckets!');
     process.exit(0);
   }
 }
