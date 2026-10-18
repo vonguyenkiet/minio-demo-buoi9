@@ -5,11 +5,11 @@ Triển khai hệ thống lưu trữ đối tượng **MinIO theo chuẩn AWS S3
 
 > [!IMPORTANT]
 > **Tính Độc Lập Hoàn Toàn Với Buổi 8:**
-> Dự án sử dụng compose project name `minio-demo-buoi9`, mạng riêng `app_network_buoi9`, volumes riêng (`minio_data_buoi9`, `postgres_data_buoi9`), backend ports `3003`, `3004`, MinIO Console port `9091`, hoàn toàn không xung đột và không làm thay đổi dữ liệu của Buổi 8.
+> Dự án sử dụng compose project name `minio-demo-buoi9`, mạng riêng `app_network_buoi9`, volumes riêng (`minio_data_buoi9`, `postgres_data_buoi9`), backend ports `3003`, `3004`, MinIO Console port `9091`, hoàn toàn không xung đột và không làm thay đổi dữ liệu của Buổi 8 (`nginx-demo-buoi8`).
 
 ---
 
-## 1. Kiến trúc Hệ thống
+## 1. Kiến Trúc Hệ Thống
 
 ```text
                                 Windows Browser
@@ -41,170 +41,182 @@ Triển khai hệ thống lưu trữ đối tượng **MinIO theo chuẩn AWS S3
  Browser ---> http://127.0.0.1:9091 ---> MinIO Console (Cổng 9001 nội bộ)
 ```
 
-### Nguyên tắc Bảo mật MinIO (P0 Security Hardening)
-1. **Tách biệt vai trò Credentials**:
-   - `MINIO_ROOT_USER` & `MINIO_ROOT_PASSWORD`: Dành riêng cho quản trị viên thực hiện provisioning thông qua CLI container `minio-admin`. **Tuyệt đối không đưa vào runtime `backend-1` hay `backend-2`**.
-   - `MINIO_BACKEND_ACCESS_KEY` & `MINIO_BACKEND_SECRET_KEY`: Service account riêng biệt (`buoi9_app_svc`) với chính sách quyền tối thiểu (**Least Privilege**).
-2. **Chính sách quyền tối thiểu (IAM Policy)**:
-   - Backend chỉ được phép thao tác trên các bucket trong allowlist: `buoi9-assets`, `buoi9-assets-archive`, `product-images`.
-   - Các quyền cho phép: `s3:GetBucketLocation`, `s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`.
-   - **Bị chặn tuyệt đối**: Tạo bucket (`s3:CreateBucket`), xóa bucket, quản trị user, gán policy.
-3. **Quyền truy cập ẩn danh (Anonymous Policy)**:
-   - **Public**: Chỉ cho phép `s3:GetObject` trên prefix `buoi9-assets/public/*` và `product-images/*`.
-   - **Private**: Prefix `private/*`, `avatars/*`, `documents/*` và toàn bộ bucket `buoi9-assets-archive` đều bị từ chối truy cập ẩn danh (**HTTP 403 Forbidden**).
-   - Anonymous **bị chặn hoàn toàn** các quyền: List bucket, Upload (PUT), Delete.
-4. **MinIO Healthcheck**:
-   - Sử dụng lệnh `mc ready local` với binary `/usr/bin/mc` có sẵn trong image `cgr.dev/chainguard/minio@sha256:...`. Xác minh cluster sẵn sàng trước khi backend khởi động.
+---
+
+## 2. Yêu Cầu Môi Trường (Prerequisites)
+
+- **Docker Desktop** hoặc **Docker Engine** (hỗ trợ Docker Compose v2 trở lên).
+- **Node.js** >= 18 và **npm** (để chạy bộ kiểm thử chấp nhận E2E trên host hoặc build frontend).
+- **curl** (hoặc `curl.exe` tích hợp sẵn trên Windows 10/11).
+- **PowerShell 5.1+** (trên Windows) hoặc **Bash** (trên Linux/macOS).
+- Cổng `80` và cổng `9091` trên máy host đang rảnh.
 
 ---
 
-## 2. Điều kiện Tiên quyết
-- Docker Desktop hoặc Docker Engine với Docker Compose v2.
-- Node.js >= 18 và npm (nếu muốn chạy script kiểm thử trên host hoặc build frontend).
-- Cổng `80` trên máy host đang rảnh (không bị chiếm bởi IIS, Skype, Apache).
+## 3. Thiết Lập Cấu Hình (Configuration & Credentials)
 
----
+### 3.1. Tạo tệp cấu hình `.env`
+Sao chép mẫu cấu hình từ [.env.example](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/.env.example):
+```powershell
+# Windows PowerShell:
+Copy-Item .env.example .env
 
-## 3. Cấu hình Windows Hosts
+# Linux / macOS / Bash:
+cp .env.example .env
+```
 
-Để truy cập web app và MinIO S3 API qua đúng domain đã cấu hình trong reverse proxy, thêm vào file `C:\Windows\System32\drivers\etc\hosts`:
+### 3.2. Giải thích chi tiết các biến cấu hình
+| Tên biến | Phạm vi áp dụng | Mục đích |
+|---|---|---|
+| `MINIO_ROOT_USER` | `minio`, `minio-admin` | Tên tài khoản Superadmin của MinIO. Chỉ dùng cho bootstrap/provisioning. |
+| `MINIO_ROOT_PASSWORD` | `minio`, `minio-admin` | Mật khẩu Root MinIO. Bắt buộc cấu hình (không có fallback mặc định). |
+| `MINIO_BACKEND_ACCESS_KEY` | `backend-1`, `backend-2`, `minio-admin` | Access Key của Service Account cấp riêng cho backend (Least Privilege). |
+| `MINIO_BACKEND_SECRET_KEY` | `backend-1`, `backend-2`, `minio-admin` | Secret Key của Service Account backend. |
+| `MINIO_DEMO_BUCKETS` | Backend & Provisioning | Danh sách bucket nghiệp vụ: `buoi9-assets,buoi9-assets-archive`. |
+| `MINIO_BUCKET` | Backend | Bucket lưu ảnh sản phẩm: `product-images`. |
+| `PRESIGNED_URL_MAX_TTL_SECONDS` | Backend | Giới hạn trần TTL tối đa cho Presigned URL phía server (mặc định: `3600`). |
+| `MINIO_PRESIGNED_EXPIRY` | Backend | TTL mặc định nếu client không gửi tham số `expiry` (mặc định: `300`). |
+| `MINIO_CONSOLE_HOST_PORT` | `minio` | Cổng loopback host cho MinIO Console (mặc định: `9091`, tránh cổng 9001 của Buổi 8). |
 
+> [!CAUTION]
+> **Phân Biệt Root Credentials vs Service Account:**
+> - `MINIO_ROOT_USER` & `MINIO_ROOT_PASSWORD`: Tuyệt đối **không** được đưa vào runtime của `backend-1` và `backend-2`.
+> - Backend runtime chỉ được phép nhận `MINIO_BACKEND_ACCESS_KEY` và `MINIO_BACKEND_SECRET_KEY`. Nếu thiếu, backend sẽ **fail-fast dừng chạy** chứ tuyệt đối không fallback ngầm sang root.
+
+### 3.3. Cấu hình Windows Hosts
+Thêm 2 dòng sau vào file `C:\Windows\System32\drivers\etc\hosts` (mở bằng Notepad Admin):
 ```text
 127.0.0.1 shop.local
 127.0.0.1 minio.shop.local
 ```
 
-*(Lưu ý: Nếu chưa cấu hình hosts, bạn vẫn có thể truy cập qua `http://localhost/`)*.
-
 ---
 
-## 4. Hướng dẫn Triển khai Từng bước (Step-by-Step Setup)
+## 4. Quy Trình Triển Khai Đúng Thứ Tự (3-Step Mandatory Workflow)
 
-### Bước 1: Khởi tạo tệp cấu hình `.env`
-Sao chép `.env.example` thành `.env`:
+> [!WARNING]
+> **Không thể chạy `docker compose up -d` một lệnh duy nhất khi mới clone repo!**
+> Vì `backend` yêu cầu Service Account đã được khởi tạo sẵn trong MinIO để kết nối, người dùng **bắt buộc** phải tuân thủ đúng thứ tự 3 bước dưới đây:
+
+### Bước 1: Khởi động MinIO và Cơ sở dữ liệu trước
+Chỉ khởi động các dịch vụ lưu trữ nền tảng cần thiết:
 ```powershell
-Copy-Item .env.example .env
+docker compose up -d minio db
 ```
-Các biến mẫu trong `.env` đã được thiết lập sẵn cho môi trường thực hành môn học:
-- MinIO Root: `buoi9admin` / `buoi9_minio_root_secret_2026` (Chỉ dùng cho container admin).
-- MinIO Backend Service Account: `buoi9_app_svc` / `Buoi9SvcSecret2026!AppKey` (Dành riêng cho runtime backend).
-
-### Bước 2: Build Frontend (nếu chưa có `frontend/dist`)
+Chờ vài giây cho đến khi MinIO cluster sẵn sàng (`mc ready local`):
 ```powershell
-cd frontend
-npm install
-npm run build
-cd ..
+docker compose exec -T minio mc ready local
+# Đầu ra mong đợi: The cluster 'local' is ready
 ```
 
-### Bước 3: Khởi động các dịch vụ bằng Docker Compose
-```powershell
-docker compose up -d
-```
-
-Kiểm tra trạng thái các container:
-```powershell
-docker compose ps
-```
-Chờ vài giây cho đến khi cả 5 containers (`minio`, `db`, `backend-1`, `backend-2`, `nginx`) đều ở trạng thái `(healthy)`.
-
-### Bước 4: Khởi tạo Bucket, Policy và Service Account (Provisioning)
-Chạy script quản trị để tự động:
-1. Kiểm tra MinIO cluster health (`mc ready local`).
-2. Khởi tạo các bucket: `product-images`, `buoi9-assets`, `buoi9-assets-archive`.
-3. Gán anonymous read policy cho `buoi9-assets/public/*` và `product-images/*`.
-4. Tạo/cập nhật MinIO Service Account `buoi9_app_svc` với policy `scripts/backend-service-policy.json`.
+### Bước 2: Chạy Provisioning khởi tạo Bucket & Service Account
+Chạy script tự động hóa quản trị:
+- Xác thực Root credentials từ `.env`.
+- Tạo các bucket: `product-images`, `buoi9-assets`, `buoi9-assets-archive`.
+- Áp dụng Bucket Policy cho phép Anonymous đọc `public/*` và xác minh lại bằng API.
+- Tạo hoặc cập nhật Service Account với chính sách quyền tối thiểu [backend-service-policy.json](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/scripts/backend-service-policy.json).
 
 **Trên Windows (PowerShell):**
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/provision-minio.ps1
 ```
 
-**Trên Linux / Git Bash:**
+**Trên Linux / macOS / Git Bash:**
 ```bash
 bash scripts/provision-minio.sh
 ```
+*(Script có tính **Idempotent**, chạy lại an toàn mà không làm hỏng cấu hình hay mất dữ liệu).*
 
-*(Script có tính **idempotent**, có thể chạy lại an toàn nhiều lần mà không làm mất dữ liệu)*.
-
-### Bước 5: Xác minh Backend đang dùng Service Account
-Xem log khởi động của `backend-1`:
+### Bước 3: Khởi động toàn bộ các dịch vụ còn lại
+Sau khi provisioning hoàn tất, khởi động backend, NGINX và frontend:
 ```powershell
-docker compose logs backend-1
+docker compose up -d
 ```
-Đầu ra xác nhận:
-```text
-[Server] Checking MinIO storage connectivity (Least-Privilege Service Account)...
-[MinIO] ✅ Bucket "product-images" sẵn sàng (truy cập hợp lệ qua Service Account).
-[MinIO] ✅ Bucket "buoi9-assets" sẵn sàng (truy cập hợp lệ qua Service Account).
-[MinIO] ✅ Bucket "buoi9-assets-archive" sẵn sàng (truy cập hợp lệ qua Service Account).
-[Server] ✅ backend-1 is running!
+Kiểm tra trạng thái toàn bộ 5 containers:
+```powershell
+docker compose ps
+# Tất cả 5 containers (minio, db, backend-1, backend-2, nginx) đều phải đạt trạng thái (healthy).
 ```
 
 ---
 
-## 5. Địa chỉ Truy cập & Thao tác Thực tế
+## 5. Đặc Tả API Presigned URL & Ràng Buộc TTL (API Contract)
 
-| Dịch vụ | Địa chỉ URL | Ghi chú |
-|---|---|---|
-| **Web Shop Catalog & Storage UI** | [http://shop.local/](http://shop.local/) hoặc [http://localhost/](http://localhost/) | Giao diện React Frontend |
-| **Storage Management GUI** | [http://shop.local/storage](http://shop.local/storage) | Quản lý Upload, Presigned URL, Move, Rename |
-| **MinIO S3 API Reverse Proxy** | [http://minio.shop.local/](http://minio.shop.local/) | Proxy qua NGINX với `Host: $http_host` |
-| **MinIO Web Console** | [http://127.0.0.1:9091](http://127.0.0.1:9091) | Đăng nhập bằng `buoi9admin` / `buoi9_minio_root_secret_2026` |
-| **Backend 1 Direct Health** | [http://127.0.0.1:3003/health](http://127.0.0.1:3003/health) | Cổng test instance 1 |
-| **Backend 2 Direct Health** | [http://127.0.0.1:3004/health](http://127.0.0.1:3004/health) | Cổng test instance 2 |
+Endpoint sinh Presigned URL: `GET /api/files/url`
+
+### Tham số Query:
+- `bucket` (bắt buộc): Tên bucket nằm trong allowlist (`buoi9-assets`, `buoi9-assets-archive`, `product-images`).
+- `key` (bắt buộc): Đường dẫn file (ví dụ: `private/report.pdf`).
+- `expiry` (tùy chọn): Thời gian sống của URL tính bằng giây.
+
+### Quy tắc Xác thực Server-Side:
+1. **Bỏ qua tham số `expiry`:** Server áp dụng mặc định an toàn là **300 giây**.
+2. **Giá trị hợp lệ:** Số nguyên dương nằm trong khoảng từ `1` đến `PRESIGNED_URL_MAX_TTL_SECONDS` (mặc định: `3600`).
+3. **Từ chối và trả về HTTP 400 Bad Request nếu:**
+   - `expiry` là số `0` hoặc số âm (`-60`).
+   - `expiry` là chuỗi không phải số (`abc`) hoặc số thập phân (`60.5`).
+   - `expiry` vượt quá trần cấu hình phía server (`> 3600`).
 
 ---
 
-## 6. Hướng dẫn Kiểm thử & Bằng chứng Nghiệm thu
+## 6. Quy Trình Kiểm Thử (Testing & Verification)
 
-### 6.1. Chạy Bộ Test Hardening Tự động (26 bài test)
-Chạy script kiểm thử tích hợp toàn diện qua NGINX:
+### 6.1. Kiểm thử Tích hợp Toàn diện (31 E2E Tests trên Host)
+Chạy bộ test tự động kiểm tra toàn bộ 9 nhóm chức năng và bảo mật qua NGINX:
 ```powershell
 node scripts/test-buoi9-hardening.js
 ```
-Bộ test tự động xác minh:
-- Health check backend, DB, MinIO, NGINX.
-- Bảo mật P0: Service account không có quyền tạo bucket (`Access Denied`), backend không chạy khi thiếu credentials.
-- CRUD đối tượng qua API: Upload, Download, Integrity bit-for-bit.
-- Presigned URL: Chuẩn AWS Signature V4, TTL 300s, từ chối URL bị sửa đổi (HTTP 403).
-- Phân quyền Anonymous: Public GET (200), Private GET (403), List (403), Put (403), Delete (403).
-- Rename & Move an toàn: Copy sang đích -> Xác minh dung lượng -> Xóa nguồn.
-- Validation: Chặn path traversal (`../../`), chặn MIME type lạ, giới hạn kích thước file (HTTP 413).
-- Load balancing: Requests phân phối đều qua `backend-1` và `backend-2`.
-- Kế thừa API sản phẩm Buổi 8 (`/api/products`).
+*Kết quả: 31/31 bài test PASS.*
 
-### 6.2. Chạy Bộ Test SDK MinIO (`scripts/test-buoi9.js`)
-Chạy trong container quản trị `minio-admin`:
+### 6.2. Kiểm thử Triển khai Sạch Cô lập (Clean Deployment Test)
+Xác minh khả năng triển khai lại từ đầu với bộ credentials ngẫu nhiên mới sinh, không chạm vào volumes hiện có:
+```powershell
+node scripts/verify-clean-deployment.js
+```
+*Kết quả: 10/10 bước PASS, container tự hủy sau test.*
+
+### 6.3. Kiểm thử SDK Quản trị trong Container (`minio-admin`)
 ```powershell
 docker compose run --rm minio-admin node scripts/test-buoi9.js
 ```
 
-### 6.3. Tự động sinh Toàn bộ File Bằng chứng
+### 6.4. Tự động Tạo Bằng Chứng Kiểm Thử (Evidence Generator)
 ```powershell
 node scripts/generate-evidence.js
 ```
-Các file bằng chứng độc lập của Buổi 9 được lưu tại `docs/evidence/buoi9/`.
+Toàn bộ 9 file bằng chứng độc lập được lưu tại thư mục [docs/evidence/buoi9/](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/).
 
 ---
 
-## 7. Xử lý Sự cố Thường gặp (Troubleshooting)
+## 7. Hướng Dẫn Xử Lý Sự Cố (Troubleshooting)
 
-1. **Truy cập `http://minio.shop.local/...` báo `Cannot GET` hoặc không vào được:**
-   - Nguyên nhân: Chưa cấu hình file `hosts` của Windows.
-   - Khắc phục: Thêm `127.0.0.1 minio.shop.local` và `127.0.0.1 shop.local` vào file `C:\Windows\System32\drivers\etc\hosts`.
-2. **Backend báo lỗi `[MinIO Configuration Error] MINIO_ACCESS_KEY... chưa được cấu hình`:**
-   - Nguyên nhân: Thiếu biến môi trường `MINIO_BACKEND_ACCESS_KEY` trong `.env`.
-   - Khắc phục: Kiểm tra `.env` đã có đầy đủ `MINIO_BACKEND_ACCESS_KEY=buoi9_app_svc` và `MINIO_BACKEND_SECRET_KEY=...`.
-3. **Cổng 80 bị chiếm dụng:**
-   - Nguyên nhân: Dịch vụ IIS (World Wide Web Publishing Service) hoặc ứng dụng khác đang chiếm cổng 80.
-   - Khắc phục: Mở PowerShell (Admin) chạy `Stop-Service W3SVC` hoặc đổi cổng NGINX trong `docker-compose.yml`.
+| Dấu hiệu sự cố | Nguyên nhân | Biện pháp khắc phục |
+|---|---|---|
+| Compose báo lỗi `MINIO_ROOT_USER is required` | Chưa có file `.env` hoặc thiếu biến root | Sao chép `.env.example` thành `.env` và khai báo đủ biến. |
+| Backend báo lỗi `[MinIO Configuration Error]` khi khởi động | Thiếu `MINIO_BACKEND_ACCESS_KEY` hoặc `SECRET_KEY` | Kiểm tra `.env` có đầy đủ credentials của Service Account. Backend fail-fast để ngăn chặn chạy thiếu bảo mật. |
+| Backend báo lỗi `[MinIO Storage Init] Connection failed...` sau nhiều lần retry | Chưa chạy Bước 2 Provisioning | MinIO chưa có Service Account. Chạy `scripts/provision-minio.ps1` hoặc `provision-minio.sh`. |
+| Script `set-demo-policy.js` thoát với mã lỗi 1 | Thiếu bucket bắt buộc trong MinIO | Chạy `scripts/create-demo-buckets.js` trước khi áp dụng policy. Script có cơ chế fail-fast không nuốt lỗi. |
+| Truy cập `http://minio.shop.local/...` báo không kết nối được | Chưa cấu hình Windows Hosts | Thêm `127.0.0.1 minio.shop.local` và `127.0.0.1 shop.local` vào file `C:\Windows\System32\drivers\etc\hosts`. |
+| Upload file bị lỗi `HTTP 413 Payload Too Large` | Dung lượng file vượt giới hạn | Backend giới hạn upload 5MB (`MAX_FILE_SIZE`). NGINX giới hạn 25MB (`client_max_body_size 25m`). |
+| Sinh Presigned URL bị lỗi `HTTP 400 Bad Request` | Tham số `expiry` không hợp lệ hoặc vượt trần | Đảm bảo `expiry` là số nguyên dương `<= PRESIGNED_URL_MAX_TTL_SECONDS` (3600s). |
 
 ---
 
-## 8. Dừng Dự án An toàn
+## 8. Nguyên Tắc Bảo Mật & Lưu Ý Lịch Sử Git
+
+> [!CAUTION]
+> **Lưu ý quan trọng về Lịch sử Git (Git History Security Notice):**
+> Việc loại bỏ secret khỏi mã nguồn hiện tại **không** tự động xóa secret đó khỏi lịch sử các commit trước đây trong Git.
+> - Bất kỳ credential nào đã từng xuất hiện trong commit lịch sử đều phải được coi là **đã bị công khai (compromised)**.
+> - Khuyến nghị bắt buộc: **Rotate (thu hồi và đổi mới)** toàn bộ Root credentials, Service Account credentials và Database passwords trên bất kỳ hệ thống nào sử dụng cấu hình này.
+> - Tuyệt đối không commit tệp `.env` vào repository (đã được cấu hình trong `.gitignore`).
+
+---
+
+## 9. Dừng Dự Án An Toàn
+
 ```powershell
 docker compose down
 ```
-> [!CAUTION]
-> Tuyệt đối không dùng `docker compose down -v` nếu muốn giữ lại dữ liệu upload và database. Lệnh trên chỉ dừng các container và network của Buổi 9, hoàn toàn không chạm vào tài nguyên của Buổi 8.
+> [!NOTE]
+> Lệnh trên chỉ dừng các container và network của Buổi 9. **Không** dùng `docker compose down -v` để bảo toàn dữ liệu database và các object đã upload trong volume `minio_data_buoi9`.

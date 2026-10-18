@@ -52,12 +52,19 @@ async function startServer() {
     process.exit(1);
   }
 
-  // 2. Kiểm tra kết nối MinIO và quyền truy cập Service Account (không chạy thao tác admin khi start)
+  // 2. Kiểm tra kết nối MinIO và xác thực Service Account (không chạy thao tác admin khi start)
   console.log('[Server] Checking MinIO storage connectivity (Least-Privilege Service Account)...');
   try {
-    await retry(() => checkStorageConnection(), 10, 3000);
+    await retry(async () => {
+      try {
+        return await checkStorageConnection();
+      } catch (storageErr) {
+        console.warn(`[Server] ⚠️ MinIO service account / storage not ready: ${storageErr.message}. (Yêu cầu hoàn tất provisioning trước khi backend khởi động)`);
+        throw storageErr;
+      }
+    }, 10, 3000);
   } catch (err) {
-    console.error('[Server] ❌ Failed to verify MinIO storage after 10 attempts. Exiting...');
+    console.error('[Server] ❌ Failed to authenticate/connect to MinIO storage after 10 attempts (30s). Backend requires valid service account provisioning. Exiting...');
     process.exit(1);
   }
 

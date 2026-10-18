@@ -6,11 +6,17 @@
  * Comprehensive Acceptance & Security Hardening Test for Buổi 9 (MinIO Object Storage)
  *
  * Kiểm thử toàn diện:
- * 1. Health checks & kết nối hệ thống (Backend, DB, MinIO, NGINX).
- * 2. Bảo mật P0: Tách Service Account khỏi Root, least-privilege, không fallback.
+ * 1. Health checks & kết nối dịch vụ (Backend, DB, MinIO, NGINX).
+ * 2. Bảo mật P0: Tách Service Account khỏi Root, least-privilege, không fallback,
+ *    xử lý lỗi chính sách bắt buộc (set-demo-policy.js).
  * 3. Thao tác S3 CRUD qua Backend API (List, Upload, Info, Download).
- * 4. Presigned URL (chữ ký AWS Signature V4 qua minio.shop.local, TTL 300s, tamper check).
- * 5. Phân quyền Public vs Private (Anonymous GET public, Anonymous 403 private/list/put/delete).
+ * 4. Presigned URL:
+ *    - Chữ ký AWS Signature V4 qua minio.shop.local
+ *    - Expiry mặc định (300s)
+ *    - Expiry tùy biến hợp lệ (60s)
+ *    - Chặn TTL = 0, số âm, số thập phân, chuỗi ký tự, vượt trần MAX_TTL
+ *    - Kiểm tra chữ ký bị sửa đổi (SignatureDoesNotMatch)
+ * 5. Phân quyền Public vs Private (Anonymous GET public 200, Anonymous 403 private/list/put/delete).
  * 6. Quy trình Rename / Move an toàn (Copy -> Verify -> Delete source).
  * 7. Validation: Allowlist buckets, Path traversal, Unsupported MIME, Body size limit (HTTP 413).
  * 8. Dual Backend Load Balancing qua NGINX (X-Instance header).
@@ -21,7 +27,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execSync } = require('child_process');
 
 const NGINX_HOST = '127.0.0.1';
@@ -29,11 +34,36 @@ const NGINX_PORT = 80;
 
 const results = [];
 
-function recordResult(category, testName, status, details = '') {
+function recordResult(code, category, testName, status, details = '') {
   const icon = status === 'PASS' ? '✅' : status === 'FAIL' ? '❌' : '⚠️';
-  console.log(`${icon} [${status}] [${category}] ${testName} ${details ? '- ' + details : ''}`);
-  results.push({ category, testName, status, details });
+  console.log(`${icon} [${code}] [${status}] [${category}] ${testName} ${details ? '- ' + details : ''}`);
+  results.push({ code, category, testName, status, details });
 }
+
+/**
+ * Đọc cấu hình từ .env an toàn
+ */
+function loadEnv() {
+  const envPath = path.join(__dirname, '..', '.env');
+  const envMap = {};
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#') || !line.includes('=')) continue;
+      const idx = line.indexOf('=');
+      const key = line.slice(0, idx).trim();
+      let val = line.slice(idx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      envMap[key] = val;
+    }
+  }
+  return envMap;
+}
+
+const envConfig = loadEnv();
 
 /**
  * Gửi HTTP request đa năng
@@ -175,34 +205,34 @@ async function runTestSuite() {
   try {
     const resHealth = await sendHttpRequest({ path: '/health', headers: { Host: 'shop.local' } });
     if (resHealth.statusCode === 200 && resHealth.data && resHealth.data.status === 'ok') {
-      recordResult('Health', 'Backend Process Health (/health)', 'PASS', `Instance: ${resHealth.data.instance}`);
+      recordResult('AC01', 'Health', 'Backend Process Health (/health)', 'PASS', `Instance: ${resHealth.data.instance}`);
     } else {
-      recordResult('Health', 'Backend Process Health (/health)', 'FAIL', `HTTP ${resHealth.statusCode}`);
+      recordResult('AC01', 'Health', 'Backend Process Health (/health)', 'FAIL', `HTTP ${resHealth.statusCode}`);
     }
   } catch (err) {
-    recordResult('Health', 'Backend Process Health (/health)', 'FAIL', err.message);
+    recordResult('AC01', 'Health', 'Backend Process Health (/health)', 'FAIL', err.message);
   }
 
   try {
     const resDbHealth = await sendHttpRequest({ path: '/health/db', headers: { Host: 'shop.local' } });
     if (resDbHealth.statusCode === 200 && resDbHealth.data && resDbHealth.data.checks.postgresql === 'ok' && resDbHealth.data.checks.minio === 'ok') {
-      recordResult('Health', 'DB & MinIO Health (/health/db)', 'PASS', 'PostgreSQL & MinIO both OK');
+      recordResult('AC02', 'Health', 'DB & MinIO Health (/health/db)', 'PASS', 'PostgreSQL & MinIO both OK');
     } else {
-      recordResult('Health', 'DB & MinIO Health (/health/db)', 'FAIL', `Status: ${resDbHealth.statusCode}`);
+      recordResult('AC02', 'Health', 'DB & MinIO Health (/health/db)', 'FAIL', `Status: ${resDbHealth.statusCode}`);
     }
   } catch (err) {
-    recordResult('Health', 'DB & MinIO Health (/health/db)', 'FAIL', err.message);
+    recordResult('AC02', 'Health', 'DB & MinIO Health (/health/db)', 'FAIL', err.message);
   }
 
   try {
     const resNginx = await sendHttpRequest({ path: '/nginx-health', headers: { Host: 'shop.local' } });
     if (resNginx.statusCode === 200 && resNginx.data && resNginx.data.service === 'nginx') {
-      recordResult('Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'PASS', `Stage: ${resNginx.data.stage}`);
+      recordResult('AC03', 'Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'PASS', `Stage: ${resNginx.data.stage}`);
     } else {
-      recordResult('Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'FAIL', `Status: ${resNginx.statusCode}`);
+      recordResult('AC03', 'Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'FAIL', `Status: ${resNginx.statusCode}`);
     }
   } catch (err) {
-    recordResult('Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'FAIL', err.message);
+    recordResult('AC03', 'Health', 'NGINX Reverse Proxy Health (/nginx-health)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -216,14 +246,15 @@ async function runTestSuite() {
     const hasRootPass = backendEnvRaw.includes('MINIO_ROOT_PASSWORD=');
     const accessKeyMatch = backendEnvRaw.match(/MINIO_ACCESS_KEY=([^\r\n]+)/);
     const accessKey = accessKeyMatch ? accessKeyMatch[1] : '';
+    const expectedKey = process.env.MINIO_BACKEND_ACCESS_KEY || envConfig.MINIO_BACKEND_ACCESS_KEY || 'buoi9_app_svc';
 
-    if (!hasRootUser && !hasRootPass && accessKey === 'buoi9_app_svc') {
-      recordResult('Security-P0', 'Backend Runtime Environment Isolation', 'PASS', 'Backend runtime uses buoi9_app_svc, zero root credentials present');
+    if (!hasRootUser && !hasRootPass && accessKey && accessKey === expectedKey) {
+      recordResult('AC04', 'Security-P0', 'Backend Runtime Environment Isolation', 'PASS', `Uses service account (${accessKey}), zero root credentials present`);
     } else {
-      recordResult('Security-P0', 'Backend Runtime Environment Isolation', 'FAIL', `Root in env: ${hasRootUser || hasRootPass}, AccessKey: ${accessKey}`);
+      recordResult('AC04', 'Security-P0', 'Backend Runtime Environment Isolation', 'FAIL', `Root in env: ${hasRootUser || hasRootPass}, AccessKey: ${accessKey}`);
     }
   } catch (err) {
-    recordResult('Security-P0', 'Backend Runtime Environment Isolation', 'FAIL', err.message);
+    recordResult('AC04', 'Security-P0', 'Backend Runtime Environment Isolation', 'FAIL', err.message);
   }
 
   try {
@@ -236,12 +267,12 @@ async function runTestSuite() {
         '"',
       { encoding: 'utf8', stdio: 'pipe' }
     );
-    recordResult('Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'PASS', 'Access Denied returned as expected');
+    recordResult('AC05', 'Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'PASS', 'Access Denied returned as expected');
   } catch (err) {
     if (err.status === 0) {
-      recordResult('Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'PASS', 'Access Denied returned as expected');
+      recordResult('AC05', 'Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'PASS', 'Access Denied returned as expected');
     } else {
-      recordResult('Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'FAIL', `Exit code: ${err.status}`);
+      recordResult('AC05', 'Security-P0', 'Service Account Least Privilege (makeBucket blocked)', 'FAIL', `Exit code: ${err.status}`);
     }
   }
 
@@ -251,13 +282,28 @@ async function runTestSuite() {
       'docker compose run --rm -e MINIO_ACCESS_KEY="" -e MINIO_SECRET_KEY="" backend-1 node -e "require(\'./src/config/minio\')"',
       { encoding: 'utf8', stdio: 'pipe' }
     );
-    recordResult('Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'FAIL', 'Backend started unexpectedly without credentials');
+    recordResult('AC06', 'Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'FAIL', 'Backend started unexpectedly without credentials');
   } catch (err) {
     const stderrText = (err.stderr || '') + (err.stdout || '');
     if (stderrText.includes('[MinIO Configuration Error]') && stderrText.includes('MINIO_ACCESS_KEY hoặc MINIO_SECRET_KEY chưa được cấu hình')) {
-      recordResult('Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'PASS', 'Explicit configuration error thrown, zero fallback to root');
+      recordResult('AC06', 'Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'PASS', 'Explicit configuration error thrown, zero fallback to root');
     } else {
-      recordResult('Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'FAIL', `Unexpected error output: ${stderrText.slice(0, 150)}`);
+      recordResult('AC06', 'Security-P0', 'No Fallback to Root on Missing Backend Credentials', 'FAIL', `Unexpected error output: ${stderrText.slice(0, 150)}`);
+    }
+  }
+
+  try {
+    // Kiểm tra set-demo-policy.js thoát mã khác 0 (exit 1) khi bucket bắt buộc không tồn tại
+    execSync('docker compose run --rm -e MINIO_BUCKET=nonexistent-test-bucket-for-exit minio-admin node scripts/set-demo-policy.js', {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    recordResult('AC07', 'Security-P0', 'set-demo-policy.js Fails Fast on Missing Bucket', 'FAIL', 'Script exited with code 0 instead of failing');
+  } catch (err) {
+    if (err.status !== 0) {
+      recordResult('AC07', 'Security-P0', 'set-demo-policy.js Fails Fast on Missing Bucket', 'PASS', `Script failed with exit code ${err.status} when required bucket was missing`);
+    } else {
+      recordResult('AC07', 'Security-P0', 'set-demo-policy.js Fails Fast on Missing Bucket', 'FAIL', `Exit code was ${err.status}`);
     }
   }
 
@@ -272,27 +318,27 @@ async function runTestSuite() {
       const hasBuoi9Assets = bucketNames.includes('buoi9-assets');
       const hasArchive = bucketNames.includes('buoi9-assets-archive');
       if (hasBuoi9Assets && hasArchive) {
-        recordResult('Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'PASS', `Buckets: ${bucketNames.join(', ')}`);
+        recordResult('AC08', 'Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'PASS', `Buckets: ${bucketNames.join(', ')}`);
       } else {
-        recordResult('Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', `Missing expected demo buckets: ${bucketNames}`);
+        recordResult('AC08', 'Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', `Missing expected demo buckets: ${bucketNames}`);
       }
     } else {
-      recordResult('Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', `HTTP ${resBuckets.statusCode}`);
+      recordResult('AC08', 'Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', `HTTP ${resBuckets.statusCode}`);
     }
   } catch (err) {
-    recordResult('Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', err.message);
+    recordResult('AC08', 'Storage-API', 'Get Demo Buckets Summary (/api/buckets)', 'FAIL', err.message);
   }
 
   try {
     // Bucket ngoài allowlist
     const resForbiddenBucket = await sendHttpRequest({ path: '/api/files?bucket=unauthorized-secret-bucket', headers: { Host: 'shop.local' } });
     if (resForbiddenBucket.statusCode === 403) {
-      recordResult('Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'PASS', 'HTTP 403 Forbidden correctly returned');
+      recordResult('AC09', 'Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'PASS', 'HTTP 403 Forbidden correctly returned');
     } else {
-      recordResult('Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'FAIL', `Expected 403, got ${resForbiddenBucket.statusCode}`);
+      recordResult('AC09', 'Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'FAIL', `Expected 403, got ${resForbiddenBucket.statusCode}`);
     }
   } catch (err) {
-    recordResult('Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'FAIL', err.message);
+    recordResult('AC09', 'Storage-API', 'Enforce Bucket Allowlist (Forbidden Bucket)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -315,12 +361,12 @@ async function runTestSuite() {
 
     if (uploadRes.statusCode === 201 && uploadRes.data && uploadRes.data.success) {
       uploadedFileId = uploadRes.data.data.id;
-      recordResult('Storage-API', 'Upload Private Object (/api/files)', 'PASS', `Key: ${privateKey}, Size: ${uploadRes.data.data.size} bytes`);
+      recordResult('AC10', 'Storage-API', 'Upload Private Object (/api/files)', 'PASS', `Key: ${privateKey}, Size: ${uploadRes.data.data.size} bytes`);
     } else {
-      recordResult('Storage-API', 'Upload Private Object (/api/files)', 'FAIL', `HTTP ${uploadRes.statusCode}: ${uploadRes.text}`);
+      recordResult('AC10', 'Storage-API', 'Upload Private Object (/api/files)', 'FAIL', `HTTP ${uploadRes.statusCode}: ${uploadRes.text}`);
     }
   } catch (err) {
-    recordResult('Storage-API', 'Upload Private Object (/api/files)', 'FAIL', err.message);
+    recordResult('AC10', 'Storage-API', 'Upload Private Object (/api/files)', 'FAIL', err.message);
   }
 
   // Download & Verify content
@@ -331,46 +377,62 @@ async function runTestSuite() {
     });
 
     if (dlRes.statusCode === 200 && dlRes.text === testContent) {
-      recordResult('Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'PASS', 'Downloaded content matches uploaded content exactly');
+      recordResult('AC11', 'Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'PASS', 'Downloaded content matches uploaded content exactly');
     } else {
-      recordResult('Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'FAIL', `HTTP ${dlRes.statusCode}, Content match: ${dlRes.text === testContent}`);
+      recordResult('AC11', 'Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'FAIL', `HTTP ${dlRes.statusCode}, Content match: ${dlRes.text === testContent}`);
     }
   } catch (err) {
-    recordResult('Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'FAIL', err.message);
+    recordResult('AC11', 'Storage-API', 'Download Object & Integrity Check (/api/files/download)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
-  // 5. Presigned URL (AWS Signature V4, NGINX Host, Expiry)
+  // 5. Presigned URL (AWS Signature V4, TTL Validation & Bounds)
   // --------------------------------------------------------------------------
   console.log('\n--- PHẦN 5: PRESIGNED URL & AWS SIGNATURE V4 ---');
   let presignedUrl = null;
+
+  // 5.1: Mặc định an toàn khi không truyền expiry (300s)
   try {
-    const urlRes = await sendHttpRequest({
-      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=300`,
+    const defaultUrlRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}`,
       headers: { Host: 'shop.local' },
     });
+    if (defaultUrlRes.statusCode === 200 && defaultUrlRes.data && defaultUrlRes.data.data.expiresIn === 300) {
+      recordResult('AC12', 'Presigned-URL', 'Default Expiry (Omitted expiry defaults to 300s)', 'PASS', `ExpiresIn: ${defaultUrlRes.data.data.expiresIn}s`);
+    } else {
+      recordResult('AC12', 'Presigned-URL', 'Default Expiry (Omitted expiry defaults to 300s)', 'FAIL', `HTTP ${defaultUrlRes.statusCode}`);
+    }
+  } catch (err) {
+    recordResult('AC12', 'Presigned-URL', 'Default Expiry (Omitted expiry defaults to 300s)', 'FAIL', err.message);
+  }
 
-    if (urlRes.statusCode === 200 && urlRes.data && urlRes.data.data.presignedUrl) {
-      presignedUrl = urlRes.data.data.presignedUrl;
+  // 5.2: TTL hợp lệ tùy biến (60s)
+  try {
+    const customUrlRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=60`,
+      headers: { Host: 'shop.local' },
+    });
+    if (customUrlRes.statusCode === 200 && customUrlRes.data && customUrlRes.data.data.expiresIn === 60) {
+      presignedUrl = customUrlRes.data.data.presignedUrl;
       const urlObj = new URL(presignedUrl);
       const isCorrectHost = urlObj.hostname === 'minio.shop.local';
       const hasSignature = urlObj.searchParams.has('X-Amz-Signature');
       const hasAlgorithm = urlObj.searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256';
-      const hasExpires = urlObj.searchParams.get('X-Amz-Expires') === '300';
+      const hasExpires = urlObj.searchParams.get('X-Amz-Expires') === '60';
 
       if (isCorrectHost && hasSignature && hasAlgorithm && hasExpires) {
-        recordResult('Presigned-URL', 'Generate Presigned URL with AWS SigV4 (300s TTL)', 'PASS', `Host: ${urlObj.hostname}, Algorithm: AWS4-HMAC-SHA256`);
+        recordResult('AC13', 'Presigned-URL', 'Valid Custom TTL (expiry=60s) with SigV4', 'PASS', `Host: ${urlObj.hostname}, Algorithm: AWS4-HMAC-SHA256`);
       } else {
-        recordResult('Presigned-URL', 'Generate Presigned URL with AWS SigV4 (300s TTL)', 'FAIL', `Host: ${urlObj.hostname}, Sig: ${hasSignature}`);
+        recordResult('AC13', 'Presigned-URL', 'Valid Custom TTL (expiry=60s) with SigV4', 'FAIL', `Sig: ${hasSignature}, Exp: ${hasExpires}`);
       }
     } else {
-      recordResult('Presigned-URL', 'Generate Presigned URL with AWS SigV4 (300s TTL)', 'FAIL', `HTTP ${urlRes.statusCode}`);
+      recordResult('AC13', 'Presigned-URL', 'Valid Custom TTL (expiry=60s) with SigV4', 'FAIL', `HTTP ${customUrlRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Presigned-URL', 'Generate Presigned URL with AWS SigV4 (300s TTL)', 'FAIL', err.message);
+    recordResult('AC13', 'Presigned-URL', 'Valid Custom TTL (expiry=60s) with SigV4', 'FAIL', err.message);
   }
 
-  // Truy cập qua Presigned URL với Host header minio.shop.local
+  // 5.3: Truy cập qua Presigned URL với Host header minio.shop.local
   if (presignedUrl) {
     try {
       const urlObj = new URL(presignedUrl);
@@ -380,15 +442,15 @@ async function runTestSuite() {
       });
 
       if (fetchPresigned.statusCode === 200 && fetchPresigned.text === testContent) {
-        recordResult('Presigned-URL', 'Fetch Private Object via Presigned URL', 'PASS', 'HTTP 200 OK via minio.shop.local reverse proxy');
+        recordResult('AC14', 'Presigned-URL', 'Fetch Private Object via Presigned URL', 'PASS', 'HTTP 200 OK via minio.shop.local reverse proxy');
       } else {
-        recordResult('Presigned-URL', 'Fetch Private Object via Presigned URL', 'FAIL', `Expected 200, got ${fetchPresigned.statusCode}`);
+        recordResult('AC14', 'Presigned-URL', 'Fetch Private Object via Presigned URL', 'FAIL', `Expected 200, got ${fetchPresigned.statusCode}`);
       }
     } catch (err) {
-      recordResult('Presigned-URL', 'Fetch Private Object via Presigned URL', 'FAIL', err.message);
+      recordResult('AC14', 'Presigned-URL', 'Fetch Private Object via Presigned URL', 'FAIL', err.message);
     }
 
-    // Tampered Presigned URL (chữ ký giả mạo)
+    // 5.4: Tampered Presigned URL (chữ ký giả mạo)
     try {
       const urlObj = new URL(presignedUrl);
       urlObj.searchParams.set('X-Amz-Signature', 'badbadbadbadbadbadbadbadbadbadbadbadbadbadbadbadbadbadbadbadbad1');
@@ -398,13 +460,70 @@ async function runTestSuite() {
       });
 
       if (tamperedRes.statusCode === 403) {
-        recordResult('Presigned-URL', 'Reject Tampered Presigned URL', 'PASS', 'HTTP 403 Forbidden (SignatureDoesNotMatch)');
+        recordResult('AC15', 'Presigned-URL', 'Reject Tampered Presigned URL', 'PASS', 'HTTP 403 Forbidden (SignatureDoesNotMatch)');
       } else {
-        recordResult('Presigned-URL', 'Reject Tampered Presigned URL', 'FAIL', `Expected 403, got ${tamperedRes.statusCode}`);
+        recordResult('AC15', 'Presigned-URL', 'Reject Tampered Presigned URL', 'FAIL', `Expected 403, got ${tamperedRes.statusCode}`);
       }
     } catch (err) {
-      recordResult('Presigned-URL', 'Reject Tampered Presigned URL', 'FAIL', err.message);
+      recordResult('AC15', 'Presigned-URL', 'Reject Tampered Presigned URL', 'FAIL', err.message);
     }
+  }
+
+  // 5.5: Chặn TTL = 0 hoặc số âm (HTTP 400)
+  try {
+    const zeroRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=0`,
+      headers: { Host: 'shop.local' },
+    });
+    const negRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=-50`,
+      headers: { Host: 'shop.local' },
+    });
+    if (zeroRes.statusCode === 400 && negRes.statusCode === 400) {
+      recordResult('AC16', 'Presigned-URL', 'Reject Expiry Zero or Negative (HTTP 400)', 'PASS', 'Zero & Negative TTL rejected with HTTP 400');
+    } else {
+      recordResult('AC16', 'Presigned-URL', 'Reject Expiry Zero or Negative (HTTP 400)', 'FAIL', `Zero: ${zeroRes.statusCode}, Neg: ${negRes.statusCode}`);
+    }
+  } catch (err) {
+    recordResult('AC16', 'Presigned-URL', 'Reject Expiry Zero or Negative (HTTP 400)', 'FAIL', err.message);
+  }
+
+  // 5.6: Chặn TTL chuỗi không phải số hoặc số thập phân (HTTP 400)
+  try {
+    const strRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=abc`,
+      headers: { Host: 'shop.local' },
+    });
+    const floatRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=30.5`,
+      headers: { Host: 'shop.local' },
+    });
+    if (strRes.statusCode === 400 && floatRes.statusCode === 400) {
+      recordResult('AC17', 'Presigned-URL', 'Reject Non-Integer / String TTL (HTTP 400)', 'PASS', 'String & Float TTL rejected with HTTP 400');
+    } else {
+      recordResult('AC17', 'Presigned-URL', 'Reject Non-Integer / String TTL (HTTP 400)', 'FAIL', `Str: ${strRes.statusCode}, Float: ${floatRes.statusCode}`);
+    }
+  } catch (err) {
+    recordResult('AC17', 'Presigned-URL', 'Reject Non-Integer / String TTL (HTTP 400)', 'FAIL', err.message);
+  }
+
+  // 5.7: Chặn TTL vượt trần MAX_TTL (3600s) hoặc số quá lớn (HTTP 400)
+  try {
+    const overRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=7200`,
+      headers: { Host: 'shop.local' },
+    });
+    const hugeRes = await sendHttpRequest({
+      path: `/api/files/url?bucket=buoi9-assets&key=${encodeURIComponent(privateKey)}&expiry=999999999`,
+      headers: { Host: 'shop.local' },
+    });
+    if (overRes.statusCode === 400 && hugeRes.statusCode === 400) {
+      recordResult('AC18', 'Presigned-URL', 'Reject Exceeded MAX_TTL Limit (HTTP 400)', 'PASS', 'Capped by PRESIGNED_URL_MAX_TTL_SECONDS (3600s), HTTP 400 returned');
+    } else {
+      recordResult('AC18', 'Presigned-URL', 'Reject Exceeded MAX_TTL Limit (HTTP 400)', 'FAIL', `Over: ${overRes.statusCode}, Huge: ${hugeRes.statusCode}`);
+    }
+  } catch (err) {
+    recordResult('AC18', 'Presigned-URL', 'Reject Exceeded MAX_TTL Limit (HTTP 400)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -429,9 +548,9 @@ async function runTestSuite() {
       headers: { Host: 'minio.shop.local' },
     });
     if (anonPubRes.statusCode === 200 && anonPubRes.text === publicContent) {
-      recordResult('Security-Anonymous', 'Anonymous GET on Public Prefix (public/*)', 'PASS', 'HTTP 200 OK as permitted by policy');
+      recordResult('AC19', 'Security-Anonymous', 'Anonymous GET on Public Prefix (public/*)', 'PASS', 'HTTP 200 OK as permitted by policy');
     } else {
-      recordResult('Security-Anonymous', 'Anonymous GET on Public Prefix (public/*)', 'FAIL', `HTTP ${anonPubRes.statusCode}`);
+      recordResult('AC19', 'Security-Anonymous', 'Anonymous GET on Public Prefix (public/*)', 'FAIL', `HTTP ${anonPubRes.statusCode}`);
     }
 
     // 2. Anonymous GET private object -> 403 Forbidden
@@ -440,9 +559,9 @@ async function runTestSuite() {
       headers: { Host: 'minio.shop.local' },
     });
     if (anonPrivRes.statusCode === 403) {
-      recordResult('Security-Anonymous', 'Anonymous GET on Private Object Blocked', 'PASS', 'HTTP 403 Forbidden as required');
+      recordResult('AC20', 'Security-Anonymous', 'Anonymous GET on Private Object Blocked', 'PASS', 'HTTP 403 Forbidden as required');
     } else {
-      recordResult('Security-Anonymous', 'Anonymous GET on Private Object Blocked', 'FAIL', `Expected 403, got ${anonPrivRes.statusCode}`);
+      recordResult('AC20', 'Security-Anonymous', 'Anonymous GET on Private Object Blocked', 'FAIL', `Expected 403, got ${anonPrivRes.statusCode}`);
     }
 
     // 3. Anonymous ListBucket -> 403 Forbidden
@@ -451,9 +570,9 @@ async function runTestSuite() {
       headers: { Host: 'minio.shop.local' },
     });
     if (anonListRes.statusCode === 403) {
-      recordResult('Security-Anonymous', 'Anonymous ListBucket Blocked', 'PASS', 'HTTP 403 Forbidden');
+      recordResult('AC21', 'Security-Anonymous', 'Anonymous ListBucket Blocked', 'PASS', 'HTTP 403 Forbidden');
     } else {
-      recordResult('Security-Anonymous', 'Anonymous ListBucket Blocked', 'FAIL', `Expected 403, got ${anonListRes.statusCode}`);
+      recordResult('AC21', 'Security-Anonymous', 'Anonymous ListBucket Blocked', 'FAIL', `Expected 403, got ${anonListRes.statusCode}`);
     }
 
     // 4. Anonymous PUT -> 403 Forbidden
@@ -464,9 +583,9 @@ async function runTestSuite() {
       body: 'hacked content',
     });
     if (anonPutRes.statusCode === 403) {
-      recordResult('Security-Anonymous', 'Anonymous PutObject Blocked', 'PASS', 'HTTP 403 Forbidden');
+      recordResult('AC22', 'Security-Anonymous', 'Anonymous PutObject Blocked', 'PASS', 'HTTP 403 Forbidden');
     } else {
-      recordResult('Security-Anonymous', 'Anonymous PutObject Blocked', 'FAIL', `Expected 403, got ${anonPutRes.statusCode}`);
+      recordResult('AC22', 'Security-Anonymous', 'Anonymous PutObject Blocked', 'FAIL', `Expected 403, got ${anonPutRes.statusCode}`);
     }
 
     // 5. Anonymous DELETE -> 403 Forbidden
@@ -476,12 +595,12 @@ async function runTestSuite() {
       headers: { Host: 'minio.shop.local' },
     });
     if (anonDelRes.statusCode === 403) {
-      recordResult('Security-Anonymous', 'Anonymous DeleteObject Blocked', 'PASS', 'HTTP 403 Forbidden');
+      recordResult('AC23', 'Security-Anonymous', 'Anonymous DeleteObject Blocked', 'PASS', 'HTTP 403 Forbidden');
     } else {
-      recordResult('Security-Anonymous', 'Anonymous DeleteObject Blocked', 'FAIL', `Expected 403, got ${anonDelRes.statusCode}`);
+      recordResult('AC23', 'Security-Anonymous', 'Anonymous DeleteObject Blocked', 'FAIL', `Expected 403, got ${anonDelRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Security-Anonymous', 'Anonymous Policy Tests', 'FAIL', err.message);
+    recordResult('AC19', 'Security-Anonymous', 'Anonymous Policy Tests', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -510,15 +629,15 @@ async function runTestSuite() {
       });
 
       if (verifyDest.statusCode === 200 && verifySrc.statusCode === 404) {
-        recordResult('Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'PASS', `Renamed ${privateKey} -> ${renamedKey}`);
+        recordResult('AC24', 'Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'PASS', `Renamed ${privateKey} -> ${renamedKey}`);
       } else {
-        recordResult('Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', `Dest: ${verifyDest.statusCode}, Src: ${verifySrc.statusCode}`);
+        recordResult('AC24', 'Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', `Dest: ${verifyDest.statusCode}, Src: ${verifySrc.statusCode}`);
       }
     } else {
-      recordResult('Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', `HTTP ${renameRes.statusCode}: ${renameRes.text}`);
+      recordResult('AC24', 'Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', `HTTP ${renameRes.statusCode}: ${renameRes.text}`);
     }
   } catch (err) {
-    recordResult('Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', err.message);
+    recordResult('AC24', 'Storage-Ops', 'Rename Object (Safe Copy -> Verify -> Delete)', 'FAIL', err.message);
   }
 
   // Move across buckets
@@ -547,15 +666,15 @@ async function runTestSuite() {
       });
 
       if (verifyDst.statusCode === 200 && verifySrc.statusCode === 404) {
-        recordResult('Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'PASS', `Moved to buoi9-assets-archive/${movedKey}`);
+        recordResult('AC25', 'Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'PASS', `Moved to buoi9-assets-archive/${movedKey}`);
       } else {
-        recordResult('Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', `Dest: ${verifyDst.statusCode}, Src: ${verifySrc.statusCode}`);
+        recordResult('AC25', 'Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', `Dest: ${verifyDst.statusCode}, Src: ${verifySrc.statusCode}`);
       }
     } else {
-      recordResult('Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', `HTTP ${moveRes.statusCode}`);
+      recordResult('AC25', 'Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', `HTTP ${moveRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', err.message);
+    recordResult('AC25', 'Storage-Ops', 'Move Object Across Buckets (buoi9-assets -> archive)', 'FAIL', err.message);
   }
 
   // Dọn dẹp object sau move
@@ -566,7 +685,7 @@ async function runTestSuite() {
       headers: { Host: 'shop.local' },
     });
     if (delRes.statusCode === 200) {
-      recordResult('Storage-Ops', 'Delete Object (/api/files)', 'PASS', `Cleaned up buoi9-assets-archive/${movedKey}`);
+      recordResult('AC26', 'Storage-Ops', 'Delete Object (/api/files)', 'PASS', `Cleaned up buoi9-assets-archive/${movedKey}`);
     }
     // Xóa public test file
     await sendHttpRequest({
@@ -575,7 +694,7 @@ async function runTestSuite() {
       headers: { Host: 'shop.local' },
     });
   } catch (err) {
-    recordResult('Storage-Ops', 'Delete Object (/api/files)', 'FAIL', err.message);
+    recordResult('AC26', 'Storage-Ops', 'Delete Object (/api/files)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -589,12 +708,12 @@ async function runTestSuite() {
       headers: { Host: 'shop.local' },
     });
     if (traversalRes.statusCode === 400) {
-      recordResult('Validation', 'Path Traversal Prevention in Key (../../)', 'PASS', 'HTTP 400 Bad Request');
+      recordResult('AC27', 'Validation', 'Path Traversal Prevention in Key (../../)', 'PASS', 'HTTP 400 Bad Request');
     } else {
-      recordResult('Validation', 'Path Traversal Prevention in Key (../../)', 'FAIL', `Expected 400, got ${traversalRes.statusCode}`);
+      recordResult('AC27', 'Validation', 'Path Traversal Prevention in Key (../../)', 'FAIL', `Expected 400, got ${traversalRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Validation', 'Path Traversal Prevention in Key (../../)', 'FAIL', err.message);
+    recordResult('AC27', 'Validation', 'Path Traversal Prevention in Key (../../)', 'FAIL', err.message);
   }
 
   try {
@@ -607,12 +726,12 @@ async function runTestSuite() {
       mimeType: 'application/x-msdownload',
     });
     if (badMimeRes.statusCode === 400) {
-      recordResult('Validation', 'MIME Type & Extension Allowlist Filter', 'PASS', 'HTTP 400 Bad Request returned for unauthorized MIME');
+      recordResult('AC28', 'Validation', 'MIME Type & Extension Allowlist Filter', 'PASS', 'HTTP 400 Bad Request returned for unauthorized MIME');
     } else {
-      recordResult('Validation', 'MIME Type & Extension Allowlist Filter', 'FAIL', `Expected 400, got ${badMimeRes.statusCode}`);
+      recordResult('AC28', 'Validation', 'MIME Type & Extension Allowlist Filter', 'FAIL', `Expected 400, got ${badMimeRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Validation', 'MIME Type & Extension Allowlist Filter', 'FAIL', err.message);
+    recordResult('AC28', 'Validation', 'MIME Type & Extension Allowlist Filter', 'FAIL', err.message);
   }
 
   try {
@@ -626,12 +745,12 @@ async function runTestSuite() {
       mimeType: 'text/plain',
     });
     if (largeUploadRes.statusCode === 413) {
-      recordResult('Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'PASS', 'HTTP 413 Payload Too Large correctly returned');
+      recordResult('AC29', 'Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'PASS', 'HTTP 413 Payload Too Large correctly returned');
     } else {
-      recordResult('Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'FAIL', `Expected 413, got ${largeUploadRes.statusCode}`);
+      recordResult('AC29', 'Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'FAIL', `Expected 413, got ${largeUploadRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'FAIL', err.message);
+    recordResult('AC29', 'Validation', 'Upload Size Limit Enforcement (HTTP 413)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------
@@ -646,24 +765,24 @@ async function runTestSuite() {
       if (inst) instancesSeen.add(inst);
     }
     if (instancesSeen.has('backend-1') && instancesSeen.has('backend-2')) {
-      recordResult('Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'PASS', `Instances served: ${Array.from(instancesSeen).join(', ')}`);
+      recordResult('AC30', 'Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'PASS', `Instances served: ${Array.from(instancesSeen).join(', ')}`);
     } else {
-      recordResult('Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'FAIL', `Only saw: ${Array.from(instancesSeen).join(', ')}`);
+      recordResult('AC30', 'Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'FAIL', `Only saw: ${Array.from(instancesSeen).join(', ')}`);
     }
   } catch (err) {
-    recordResult('Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'FAIL', err.message);
+    recordResult('AC30', 'Load-Balancing', 'Dual Backend Load Balancing (backend-1 & backend-2)', 'FAIL', err.message);
   }
 
   try {
     // Legacy /api/products
     const prodRes = await sendHttpRequest({ path: '/api/products', headers: { Host: 'shop.local' } });
     if (prodRes.statusCode === 200 && Array.isArray(prodRes.data.data)) {
-      recordResult('Buoi8-Compat', 'Legacy Products API (/api/products)', 'PASS', `Fetched ${prodRes.data.data.length} products successfully`);
+      recordResult('AC31', 'Buoi8-Compat', 'Legacy Products API (/api/products)', 'PASS', `Fetched ${prodRes.data.data.length} products successfully`);
     } else {
-      recordResult('Buoi8-Compat', 'Legacy Products API (/api/products)', 'FAIL', `Expected 200 array, got HTTP ${prodRes.statusCode}`);
+      recordResult('AC31', 'Buoi8-Compat', 'Legacy Products API (/api/products)', 'FAIL', `Expected 200 array, got HTTP ${prodRes.statusCode}`);
     }
   } catch (err) {
-    recordResult('Buoi8-Compat', 'Legacy Products API (/api/products)', 'FAIL', err.message);
+    recordResult('AC31', 'Buoi8-Compat', 'Legacy Products API (/api/products)', 'FAIL', err.message);
   }
 
   // --------------------------------------------------------------------------

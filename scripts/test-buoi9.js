@@ -12,10 +12,14 @@ const https = require('https');
 const { URL } = require('url');
 
 const endpoint = process.env.MINIO_ENDPOINT || 'minio';
-const port = parseInt(process.env.MINIO_PORT, 10) || 9000;
-const rootUser = process.env.MINIO_ROOT_USER || 'buoi9admin';
-const rootPassword = process.env.MINIO_ROOT_PASSWORD || 'buoi9_minio_root_secret_2026';
+const rootUser = process.env.MINIO_ROOT_USER;
+const rootPassword = process.env.MINIO_ROOT_PASSWORD;
 const region = process.env.MINIO_REGION || 'us-east-1';
+
+if (!rootUser || !rootPassword) {
+  console.error('[Test Error] Thiếu biến môi trường MINIO_ROOT_USER hoặc MINIO_ROOT_PASSWORD.');
+  process.exit(1);
+}
 
 // Client nội bộ với MinIO
 const s3Client = new Minio.Client({

@@ -230,7 +230,19 @@ async function generatePresignedUrl(bucketName, key, expirySeconds = 300) {
     throw err;
   }
 
-  const ttl = Math.min(Math.max(parseInt(expirySeconds, 10) || 300, 10), 604800); // 10s đến 7 ngày
+  const maxAllowedTtl = Math.max(
+    parseInt(process.env.PRESIGNED_URL_MAX_TTL_SECONDS, 10) || 3600,
+    10
+  );
+  const ttl = parseInt(expirySeconds, 10);
+  if (isNaN(ttl) || ttl < 10 || ttl > maxAllowedTtl) {
+    const err = new Error(
+      `Thời gian hiệu lực Presigned URL không hợp lệ (${expirySeconds}s). Phải từ 10 đến ${maxAllowedTtl} giây.`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   // Dùng publicSigningClient ký với domain minio.shop.local
   const presignedUrl = await publicSigningClient.presignedGetObject(bucket, validKey, ttl);
 

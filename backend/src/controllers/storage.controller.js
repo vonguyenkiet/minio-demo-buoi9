@@ -187,9 +187,50 @@ async function downloadFile(req, res) {
   }
 }
 
+const DEFAULT_PRESIGNED_TTL = 300;
+const MIN_PRESIGNED_TTL = 10;
+const MAX_PRESIGNED_TTL = Math.max(
+  parseInt(process.env.PRESIGNED_URL_MAX_TTL_SECONDS, 10) || 3600,
+  MIN_PRESIGNED_TTL
+);
+
+/**
+ * Validate thời gian hiệu lực của Presigned URL (chống bypass, số âm, float, vượt trần)
+ */
+function validateExpiry(rawExpiry) {
+  if (rawExpiry === undefined || rawExpiry === null || rawExpiry === '') {
+    return DEFAULT_PRESIGNED_TTL;
+  }
+
+  const strVal = String(rawExpiry).trim();
+  // Chỉ chấp nhận chuỗi số nguyên dương thuần túy (không âm, không số thập phân, không chữ)
+  if (!/^\d+$/.test(strVal)) {
+    const err = new Error('Tham số expiry không hợp lệ. Phải là số nguyên dương tính bằng giây.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const ttl = parseInt(strVal, 10);
+  if (ttl < MIN_PRESIGNED_TTL) {
+    const err = new Error(`Thời gian hiệu lực (expiry=${ttl}s) quá ngắn. Tối thiểu là ${MIN_PRESIGNED_TTL} giây.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (ttl > MAX_PRESIGNED_TTL) {
+    const err = new Error(
+      `Thời gian hiệu lực (expiry=${ttl}s) vượt quá giới hạn tối đa cho phép của hệ thống (${MAX_PRESIGNED_TTL} giây).`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return ttl;
+}
+
 /**
  * GET /api/files/:id/url hoặc GET /api/files/url?bucket=...&key=...&expiry=300
- * Tạo Presigned URL cho object
+ * Tạo Presigned URL cho object với kiểm tra chặt chẽ TTL
  */
 async function getPresignedUrl(req, res) {
   try {
@@ -201,7 +242,9 @@ async function getPresignedUrl(req, res) {
       });
     }
 
-    const expiry = parseInt(req.query.expiry, 10) || 300;
+    const rawExpiry = req.query.expiry !== undefined ? req.query.expiry : (req.body && req.body.expiry);
+    const expiry = validateExpiry(rawExpiry);
+
     const result = await storageService.generatePresignedUrl(bucket, key, expiry);
 
     return res.json({

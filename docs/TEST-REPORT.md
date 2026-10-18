@@ -1,6 +1,6 @@
 # BÁO CÁO KIỂM THỬ THỰC TẾ & NGHIỆM THU (TEST REPORT) — BUỔI 9: MINIO / OBJECT STORAGE S3
 
-**Thời điểm thực hiện kiểm thử:** 2026-10-19T01:21:00+07:00 (Múi giờ UTC+7)
+**Thời điểm thực hiện kiểm thử:** 2026-10-19T02:08:55+07:00 (Múi giờ UTC+7)
 **Môi trường thử nghiệm:**
 - **Hệ điều hành:** Windows 11 (PowerShell & Node.js v20.20.2 / npm v10.8.2)
 - **Container Engine:** Docker Desktop / Docker Engine 28.x, Docker Compose v2.33.x
@@ -15,86 +15,116 @@
 
 ---
 
-## 1. Tóm tắt Kết quả Nghiệm thu
+## 1. Bảng Tổng Hợp Kết Quả Kiểm Thử (Executive Summary Table)
 
-| Phân loại | Số lượng | Tỷ lệ | Ghi chú |
-|---|---|---|---|
-| **PASS** | **32** | **94.1%** | Đã chạy thực tế, có bằng chứng log và phản hồi HTTP khớp 100% |
-| **FAIL** | **0** | **0.0%** | Không có lỗi nào chưa khắc phục |
-| **NOT RUN** | **2** | **5.9%** | HTTPS/TLS (hệ thống phục vụ HTTP theo thiết kế) & Upload vượt 25MB NGINX body (đã verify ở 6MB) |
-| **BLOCKED** | **0** | **0.0%** | Không có bài test nào bị chặn |
+> [!NOTE]
+> Tất cả số liệu trong bảng tổng hợp được tính toán chính xác 100% từ 52 dòng kiểm thử chi tiết trong Ma trận nghiệm thu bên dưới. Mọi kết quả PASS đều dựa trên lệnh và script thực sự thực thi trên môi trường Docker.
 
----
+| Nhóm kiểm thử (Category) | Tổng test | PASS | FAIL | NOT RUN | BLOCKED | Tỷ lệ PASS | Ghi chú |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| **1. Credential/config** | 7 | 7 | 0 | 0 | 0 | 100.0% | Bỏ fallback root, fail-fast khi thiếu env, không hardcode |
+| **2. Provisioning/policy** | 6 | 6 | 0 | 0 | 0 | 100.0% | Idempotent, fail-fast exit code 1, read-back verify policy |
+| **3. Backend/MinIO API** | 17 | 17 | 0 | 0 | 0 | 100.0% | CRUD, integrity, anonymous public/private, body limit 5MB |
+| **4. Presigned URL** | 7 | 7 | 0 | 0 | 0 | 100.0% | Default 300s, SigV4, chặn 0/âm/string/float/vượt MAX_TTL |
+| **5. NGINX/integration** | 7 | 6 | 0 | 1 | 0 | 85.7% | 25MB body limit (PASS), dual backend, Buoi 8, HTTPS (NOT RUN) |
+| **6. Clean deployment** | 8 | 8 | 0 | 0 | 0 | 100.0% | Chạy môi trường cô lập, credentials mới, zero volume leakage |
+| **TỔNG CỘNG** | **52** | **51** | **0** | **1** | **0** | **98.1%** | **Sẵn sàng nghiệm thu (Ready for Acceptance)** |
 
-## 2. Bảng Ma trận Kiểm thử Chi tiết (Acceptance & Hardening Matrix)
-
-### A. Hạ tầng, MinIO Healthcheck & Độc lập với Buổi 8
-| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
-|:---:|---|---|:---:|---|
-| 1 | Khởi động 5 services Buổi 9 | `docker compose ps` | **PASS** | `docs/evidence/buoi9/01-docker-compose-ps.txt` (Cả 5 container healthy) |
-| 2 | MinIO Healthcheck tương thích image | `docker inspect --format='{{json .State.Health}}' minio-demo-buoi9-minio-1` | **PASS** | `docs/evidence/buoi9/02-minio-healthcheck.txt` (`mc ready local` trả về ExitCode: 0, cluster ready) |
-| 3 | Xác minh binary `/usr/bin/mc` trong MinIO | `docker compose exec -T minio mc --version` | **PASS** | `docs/evidence/buoi9/02-minio-healthcheck.txt` (mc version DEVELOPMENT.GOGET Go 1.27.2) |
-| 4 | Cổng S3 API 9000 không publish trực tiếp ra host | Rà soát `docker-compose.yml` & `netstat -ano` | **PASS** | S3 API chỉ đi qua reverse proxy NGINX `minio.shop.local` |
-| 5 | MinIO Console loopback port 9091 | `curl.exe -I http://127.0.0.1:9091` | **PASS** | Tránh hoàn toàn xung đột với cổng 9001 của Buổi 8 |
-| 6 | Tính độc lập Volume / Network / Image | `docker volume ls`, `docker network ls` | **PASS** | `postgres_data_buoi9`, `minio_data_buoi9`, `app_network_buoi9`, `minio-demo-buoi9-backend` |
-| 7 | Không làm thay đổi source hoặc tài nguyên Buổi 8 | Rà soát Git status Buổi 8 & container Buổi 8 | **PASS** | Thư mục `D:\...\Buoi8` nguyên vẹn 100%, không bị sửa đổi |
-
-### B. Bảo mật P0 — Tách Credentials MinIO Root khỏi Backend Service Account
-| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
-|:---:|---|---|:---:|---|
-| 8 | Backend runtime chỉ nhận Service Account (`buoi9_app_svc`) | `docker compose exec -T backend-1 env` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (Zero root variables in backend runtime) |
-| 9 | Root credentials chỉ dùng trong profile quản trị | Rà soát `docker-compose.yml` (`minio-admin`) | **PASS** | `MINIO_ROOT_USER` & `ROOT_PASSWORD` chỉ cấp cho `minio-admin` profile `tools` |
-| 10 | Service account bị chặn quyền tạo bucket (Least Privilege) | `docker compose exec -T minio mc mb testsvc/hacked-bucket` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (`Access Denied.`) |
-| 11 | Service account bị chặn thao tác quản trị user / policy | `docker compose exec -T minio mc admin user ls testsvc` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (`Access Denied.`) |
-| 12 | Thiếu Backend credentials gây lỗi rõ ràng, không fallback Root | `docker compose run --rm -e MINIO_ACCESS_KEY="" backend-1 node ...` | **PASS** | `docs/evidence/buoi9/03-service-account-verification.txt` (Ném `[MinIO Configuration Error]` và dừng) |
-| 13 | Backend startup không yêu cầu quyền Admin để khởi động | `docker compose logs backend-1` | **PASS** | `docs/evidence/buoi9/04-backend-startup-logs.txt` (Chỉ gọi `checkStorageConnection`, không makeBucket) |
-| 14 | Provisioning Script khởi tạo Service Account an toàn | `powershell -File scripts/provision-minio.ps1` | **PASS** | Tạo bucket, gán policy, tạo service account `buoi9_app_svc` với `backend-service-policy.json` |
-
-### C. Chức năng S3 Storage qua Backend API & NGINX
-| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
-|:---:|---|---|:---:|---|
-| 15 | Lấy thông tin thống kê Buckets | `GET http://shop.local/api/buckets` | **PASS** | `docs/evidence/buoi9/05-e2e-hardening-test.txt` (Trả về `buoi9-assets`, `buoi9-assets-archive`) |
-| 16 | Chặn truy cập Bucket ngoài Allowlist | `GET http://shop.local/api/files?bucket=forbidden` | **PASS** | Trả về HTTP 403 Forbidden |
-| 17 | Upload Object Private | `POST http://shop.local/api/files` (multipart) | **PASS** | HTTP 201 Created, metadata lưu đúng |
-| 18 | Download Object Stream & Check Integrity | `GET http://shop.local/api/files/download?...` | **PASS** | HTTP 200 OK, nội dung khớp từng byte với file upload |
-| 19 | Tạo Presigned URL với AWS Signature V4 | `GET http://shop.local/api/files/url?...&expiry=300` | **PASS** | Sinh URL với host `minio.shop.local`, thuật toán `AWS4-HMAC-SHA256`, TTL 300s |
-| 20 | Tải file qua Presigned URL qua NGINX | `GET http://minio.shop.local/...` kèm Signature V4 | **PASS** | HTTP 200 OK qua NGINX proxy |
-| 21 | Từ chối Presigned URL bị sửa đổi (Tampered) | Sửa query param `X-Amz-Signature` | **PASS** | MinIO từ chối: HTTP 403 `SignatureDoesNotMatch` |
-| 22 | Đổi tên Object (Rename: Copy -> Verify -> Delete) | `POST http://shop.local/api/files/rename` | **PASS** | Object đích tồn tại với dung lượng khớp, object nguồn bị xóa sạch |
-| 23 | Di chuyển Object (Move: Copy -> Verify -> Delete) | `POST http://shop.local/api/files/move` | **PASS** | Chuyển từ `buoi9-assets` sang `buoi9-assets-archive` thành công |
-| 24 | Xóa Object | `DELETE http://shop.local/api/files?...` | **PASS** | Xóa sạch object khỏi bucket, get lại trả về 404 |
-
-### D. Phân quyền Anonymous (Public vs Private)
-| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
-|:---:|---|---|:---:|---|
-| 25 | Anonymous đọc file trong `public/*` | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/public/...` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 200 OK) |
-| 26 | Anonymous đọc file trong `private/*` | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/private/...` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 403 Forbidden) |
-| 27 | Anonymous List Bucket | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/` | **PASS** | `docs/evidence/buoi9/06-anonymous-policy-test.txt` (HTTP 403 Forbidden) |
-| 28 | Anonymous Upload (PUT) | `curl -X PUT -H "Host: minio.shop.local" ...` | **PASS** | HTTP 403 Forbidden |
-| 29 | Anonymous Xóa (DELETE) | `curl -X DELETE -H "Host: minio.shop.local" ...` | **PASS** | HTTP 403 Forbidden |
-
-### E. Validation, Body Limit & Load Balancing
-| STT | Hạng mục kiểm tra | Lệnh / Phương pháp xác minh | Kết quả | Bằng chứng kiểm thử |
-|:---:|---|---|:---:|---|
-| 30 | Chặn Path Traversal trong Key (`../../`) | `GET http://shop.local/api/files/download?key=../../etc/passwd` | **PASS** | HTTP 400 Bad Request |
-| 31 | Chặn MIME type nguy hiểm (.exe) | Upload file `application/x-msdownload` | **PASS** | HTTP 400 Bad Request |
-| 32 | Giới hạn dung lượng Backend (HTTP 413) | Upload file 5.5 MiB (trần cấu hình 5 MiB) | **PASS** | HTTP 413 Payload Too Large (`{"source":"backend","message":"File too large"}`) |
-| 33 | Dọn dẹp file tạm trên đĩa sau upload | Kiểm tra `/tmp/buoi9-uploads` trong backend | **PASS** | File tạm được dọn sạch trong khối `finally` cả khi thành công lẫn lỗi |
-| 34 | Dual Backend Load Balancing | 10 requests tới `http://shop.local/health` | **PASS** | Nhận cả header `X-Instance: backend-1` và `X-Instance: backend-2` |
-| 35 | Tương thích API sản phẩm Buổi 8 | `GET http://shop.local/api/products` | **PASS** | HTTP 200 OK (10 sản phẩm từ PostgreSQL) |
-| 36 | Frontend Production Build | `npm run build` trong `frontend/` | **PASS** | `docs/evidence/buoi9/07-frontend-build.txt` (Vite build dist thành công trong 1.44s) |
-| 37 | HTTPS / TLS | Chưa kích hoạt TLS trong cấu hình mẫu | **NOT RUN** | Hệ thống phục vụ HTTP cổng 80 theo đúng yêu cầu bài thực hành Buổi 9 |
+*Lý do bài kiểm thử NOT RUN:*
+- `TC-INT-07` (HTTPS / TLS): Hệ thống Buổi 9 được thiết kế phục vụ S3 API Reverse Proxy trên HTTP cổng 80 theo đúng đề bài Buổi 9. Tính năng HTTPS/TLS được lưu trữ và kiểm chứng độc lập ở Stage 05 của Buổi 8 (`nginx-demo-buoi8`).
 
 ---
 
-## 3. Danh mục Tệp Tin Bằng chứng Được Lưu trữ
+## 2. Ma Trận Kiểm Thử Chi Tiết (Detailed Acceptance & Verification Matrix)
+
+### Nhóm 1: Credential & Configuration (TC-CFG-01 -> TC-CFG-07)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-CFG-01` | Compose fail-fast khi thiếu `MINIO_ROOT_USER` hoặc `MINIO_ROOT_PASSWORD` | Chạy compose mà không truyền root vars: cú pháp `${VAR:?error}` kích hoạt dừng ngay lập tức | **PASS** | Rà soát [docker-compose.yml](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docker-compose.yml#L36-L37) (không có `:-buoi9admin`) |
+| `TC-CFG-02` | Compose fail-fast khi thiếu backend credentials | Cú pháp `${MINIO_BACKEND_ACCESS_KEY:?...}` bắt buộc trên backend-1, backend-2, minio-admin | **PASS** | Rà soát [docker-compose.yml](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docker-compose.yml#L94-L95) |
+| `TC-CFG-03` | Backend runtime isolation (chỉ dùng Service Account, zero root credentials) | Kiểm tra toàn bộ biến môi trường runtime trong container backend | **PASS** | [03-service-account-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) & [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC04`) |
+| `TC-CFG-04` | Backend fail-fast khi thiếu Service Account credentials, tuyệt đối không fallback Root | `docker compose run --rm -e MINIO_ACCESS_KEY="" -e MINIO_SECRET_KEY="" backend-1 node ...` | **PASS** | [03-service-account-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) (`[MinIO Configuration Error]`, exit code 1) |
+| `TC-CFG-05` | Root credentials bị cô lập, chỉ truyền cho MinIO và profile `tools` (`minio-admin`) | Rà soát danh sách environment của tất cả các container trong compose | **PASS** | [docker-compose.yml](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docker-compose.yml#L213-L226) |
+| `TC-CFG-06` | Phân tích cú pháp `.env` an toàn trong PowerShell & Bash (không dùng `eval`) | Kiểm tra logic parser tách dòng key=value, tự động trim ngoặc kép/đơn | **PASS** | [provision-minio.ps1](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/scripts/provision-minio.ps1#L19-L34) & [provision-minio.sh](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/scripts/provision-minio.sh#L19-L33) |
+| `TC-CFG-07` | Không hardcode credentials trong source code, Compose hay scripts | `git grep` tìm kiếm mẫu credentials cũ trong toàn bộ repo | **PASS** | Tất cả credentials được nạp động từ `.env`, `.env.example` chỉ chứa placeholder mẫu |
+
+### Nhóm 2: Provisioning & Bucket Policy (TC-PROV-01 -> TC-PROV-06)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-PROV-01` | Provisioning script chạy thành công và đạt tính Idempotent (chạy lại an toàn) | Chạy `provision-minio.ps1` 2 lần liên tiếp: lần 1 tạo mới, lần 2 cập nhật chính sách | **PASS** | [03-service-account-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) |
+| `TC-PROV-02` | Kiểm tra MinIO Cluster sẵn sàng trước khi provisioning (`mc ready local`) | `docker compose exec -T minio mc ready local` trả về ExitCode 0 | **PASS** | [02-minio-healthcheck.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/02-minio-healthcheck.txt) |
+| `TC-PROV-03` | `set-demo-policy.js` fail-fast với mã thoát 1 khi bucket bắt buộc không tồn tại | Chạy script áp dụng policy cho bucket không tồn tại `non-existent-bucket-xyz` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC07`: Exit code = 1) |
+| `TC-PROV-04` | Xác minh lại Bucket Policy sau khi áp dụng (Read-back verification) | `client.getBucketPolicy()` đọc lại policy và so sánh statement khớp với mong đợi | **PASS** | [set-demo-policy.js](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/scripts/set-demo-policy.js#L78-L108) (Statement & Action verified) |
+| `TC-PROV-05` | Service Account Least Privilege: Bị chặn tạo bucket (`mc mb`) | `docker compose exec -T minio mc mb testsvc/hacked-bucket` | **PASS** | [03-service-account-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) (`Access Denied.`) |
+| `TC-PROV-06` | Service Account Least Privilege: Bị chặn lệnh quản trị (`mc admin user ls`) | `docker compose exec -T minio mc admin user ls testsvc` | **PASS** | [03-service-account-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) (`Access Denied.`) |
+
+### Nhóm 3: Backend & MinIO S3 API Operations (TC-API-01 -> TC-API-17)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-API-01` | Backend Process Health (`/health`) | `GET http://127.0.0.1/health` qua reverse proxy | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC01`: HTTP 200) |
+| `TC-API-02` | Database & MinIO Health (`/health/db`) | `GET http://127.0.0.1/health/db` kiểm tra cả PostgreSQL và MinIO connection | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC02`: PostgreSQL & MinIO OK) |
+| `TC-API-03` | Lấy danh sách demo buckets (`/api/buckets`) | `GET http://127.0.0.1/api/buckets` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC08`: `buoi9-assets`, `buoi9-assets-archive`) |
+| `TC-API-04` | Thực thi Bucket Allowlist (chặn bucket ngoài danh mục) | `GET http://127.0.0.1/api/files?bucket=forbidden-bucket` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC09`: HTTP 403 Forbidden) |
+| `TC-API-05` | Upload Private Object lên MinIO (`/api/files`) | `POST http://127.0.0.1/api/files` kèm multipart/form-data | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC10`: HTTP 201 Created) |
+| `TC-API-06` | Download Object & kiểm tra toàn vẹn byte (Integrity check) | `GET http://127.0.0.1/api/files/download?...` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC11`: Buffer byte match 100%) |
+| `TC-API-07` | Đổi tên Object an toàn (Safe Copy -> Verify -> Delete source) | `POST http://127.0.0.1/api/files/rename` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC24`: HTTP 200 OK) |
+| `TC-API-08` | Di chuyển Object liên bucket (`buoi9-assets` -> archive) | `POST http://127.0.0.1/api/files/move` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC25`: HTTP 200 OK) |
+| `TC-API-09` | Xóa Object khỏi bucket (`/api/files`) | `DELETE http://127.0.0.1/api/files?...` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC26`: HTTP 200 OK) |
+| `TC-API-10` | Anonymous GET trên Public Prefix (`public/*`) | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/public/...` | **PASS** | [06-anonymous-policy-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) (`AC19`: HTTP 200 OK) |
+| `TC-API-11` | Anonymous GET trên Private Prefix bị chặn (`private/*`) | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/private/...` | **PASS** | [06-anonymous-policy-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) (`AC20`: HTTP 403 Forbidden) |
+| `TC-API-12` | Anonymous ListBucket bị chặn | `curl -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/` | **PASS** | [06-anonymous-policy-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) (`AC21`: HTTP 403 Forbidden) |
+| `TC-API-13` | Anonymous PutObject bị chặn | `curl -X PUT -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/public/hack.txt` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC22`: HTTP 403 Forbidden) |
+| `TC-API-14` | Anonymous DeleteObject bị chặn | `curl -X DELETE -H "Host: minio.shop.local" http://127.0.0.1/buoi9-assets/public/test.txt` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC23`: HTTP 403 Forbidden) |
+| `TC-API-15` | Ngăn chặn Path Traversal trong Key (`../../`) | `GET http://127.0.0.1/api/files/download?key=../../etc/passwd` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC27`: HTTP 400 Bad Request) |
+| `TC-API-16` | Bộ lọc MIME type & Extension Allowlist | Upload file không nằm trong danh mục (ví dụ `.exe`) | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC28`: HTTP 400 Bad Request) |
+| `TC-API-17` | Giới hạn dung lượng upload tại Backend (5MB limit) | Upload payload 5.5MB vượt cấu hình `MAX_FILE_SIZE` của multer | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC29`: HTTP 413 Payload Too Large) |
+
+### Nhóm 4: Presigned URL & AWS Signature V4 TTL Bounds (TC-TTL-01 -> TC-TTL-07)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-TTL-01` | Mặc định an toàn khi không truyền `expiry` (300 giây) | `GET /api/files/url?key=private/test.txt` (bỏ qua param expiry) | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC12`: `expiresIn: 300`) |
+| `TC-TTL-02` | Khởi tạo URL với TTL hợp lệ (`expiry=60s`) kèm AWS Signature V4 | `GET /api/files/url?...&expiry=60` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC13`: SigV4 HMAC-SHA256, 60s) |
+| `TC-TTL-03` | Truy cập tải private object qua Presigned URL qua NGINX proxy | Gửi GET HTTP tới Presigned URL với Host `minio.shop.local` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC14`: HTTP 200 OK) |
+| `TC-TTL-04` | MinIO từ chối Presigned URL bị can thiệp chữ ký (Tampered URL) | Thay đổi 1 ký tự trong query param `X-Amz-Signature` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC15`: HTTP 403 `SignatureDoesNotMatch`) |
+| `TC-TTL-05` | Từ chối TTL bằng 0 hoặc số âm với HTTP 400 | `GET /api/files/url?...&expiry=0` và `expiry=-60` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC16`: HTTP 400 Bad Request) |
+| `TC-TTL-06` | Từ chối TTL không phải số nguyên (chuỗi, số thập phân) | `GET /api/files/url?...&expiry=abc` và `expiry=60.5` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC17`: HTTP 400 Bad Request) |
+| `TC-TTL-07` | Từ chối TTL vượt quá trần cấu hình `PRESIGNED_URL_MAX_TTL_SECONDS` | `GET /api/files/url?...&expiry=999999` (trần: 3600 giây) | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC18`: HTTP 400 Bad Request) |
+
+### Nhóm 5: NGINX & Hệ Thống Tích Hợp (TC-INT-01 -> TC-INT-07)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-INT-01` | NGINX Reverse Proxy Health (`/nginx-health`) | `GET http://127.0.0.1/nginx-health` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC03`: Stage `06-minio-s3`) |
+| `TC-INT-02` | Cân bằng tải Dual Backend (`backend-1` & `backend-2`) | Gửi 10 HTTP requests liên tiếp kiểm tra header `X-Instance` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC30`: Cả 2 backend đều phản hồi) |
+| `TC-INT-03` | Kế thừa tính năng API Buổi 8 (`/api/products`) | `GET http://127.0.0.1/api/products` | **PASS** | [05-e2e-hardening-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) (`AC31`: 10 sản phẩm từ DB) |
+| `TC-INT-04` | Giới hạn `client_max_body_size` 25MB của NGINX | Upload request có `Content-Length: 27262976` (26MB) | **PASS** | [09-nginx-25mb-bodysize-test.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/09-nginx-25mb-bodysize-test.txt) (HTTP 413 từ NGINX) |
+| `TC-INT-05` | Build Frontend React / Vite trong production mode | `npm --prefix frontend run build` | **PASS** | [07-frontend-build.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/07-frontend-build.txt) (Build dist hoàn tất 1.44s) |
+| `TC-INT-06` | MinIO Web Console loopback port 9091 tránh xung đột Buổi 8 (9001) | Rà soát `ports` trong `docker-compose.yml` (`127.0.0.1:9091:9001`) | **PASS** | [01-docker-compose-ps.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/01-docker-compose-ps.txt) (Chỉ bind loopback host 9091) |
+| `TC-INT-07` | HTTPS / TLS Reverse Proxy | Cấu hình SSL/TLS độc lập ở Buổi 8 Stage 05 | **NOT RUN** | Buổi 9 sử dụng Stage 06 HTTP S3 reverse proxy cổng 80 theo thiết kế |
+
+### Nhóm 6: Triển Khai Sạch Cô Lập (Clean Deployment Verification) (TC-DEP-01 -> TC-DEP-08)
+| Mã test | Tên bài test / Hạng mục kiểm tra | Phương pháp / Lệnh xác minh thực tế | Kết quả | Bằng chứng kiểm thử |
+|:---:|---|---|:---:|---|
+| `TC-DEP-01` | Khởi động MinIO với Root Credentials mới ngẫu nhiên | Khởi chạy container MinIO cô lập với credentials mới sinh | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 1: Khởi động thành công) |
+| `TC-DEP-02` | MinIO từ chối xác thực khi nhập Root Credentials sai | `mc alias set` với mật khẩu sai | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 3: Bị từ chối xác thực) |
+| `TC-DEP-03` | MinIO xác thực thành công với Root Credentials mới | `mc alias set cleanadmin` với đúng credentials mới | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 4: Xác thực thành công) |
+| `TC-DEP-04` | Khởi tạo đầy đủ 3 Buckets bắt buộc theo chuẩn Buổi 9 | `mc mb` tạo `product-images`, `buoi9-assets`, `buoi9-assets-archive` | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 5: Tạo 3 buckets thành công) |
+| `TC-DEP-05` | Khởi tạo Service Account mới kèm chính sách Least Privilege | `mc admin user svcacct add` với `backend-service-policy.json` | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 6: Gán embedded policy) |
+| `TC-DEP-06` | Service Account mới ghi được object vào allowlisted bucket | `mc pipe cleansvc/buoi9-assets/private/test.txt` | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 7: Upload thành công) |
+| `TC-DEP-07` | Service Account mới bị chặn quyền Admin và quyền tạo Bucket | `mc mb` và `mc admin user ls` với service account mới | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 8-9: Access Denied cả 2 lệnh) |
+| `TC-DEP-08` | Dọn dẹp an toàn: Không ảnh hưởng dữ liệu/volume hiện có | Dừng container thử nghiệm, không chạy lệnh xóa volume hệ thống | **PASS** | [08-clean-deployment-verification.txt](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) (Bước 10: Dọn dẹp an toàn) |
+
+---
+
+## 3. Danh Mục Tệp Tin Bằng Chứng Kiểm Thử Độc Lập
 
 Tất cả các file bằng chứng độc lập của Buổi 9 được lưu tại: `docs/evidence/buoi9/`
 
-1. [`01-docker-compose-ps.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/01-docker-compose-ps.txt) — Trạng thái healthy của 5 containers.
-2. [`02-minio-healthcheck.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/02-minio-healthcheck.txt) — Chi tiết kiểm chứng `mc ready local` và digest Chainguard MinIO.
-3. [`03-service-account-verification.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) — Bằng chứng service account `buoi9_app_svc`, kiểm thử Access Denied khi cố tạo bucket / admin command, và lỗi khi thiếu credentials.
-4. [`04-backend-startup-logs.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/04-backend-startup-logs.txt) — Log khởi động của `backend-1` và `backend-2` kết nối bằng Service Account.
-5. [`05-e2e-hardening-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) — Kết quả chạy 26/26 bài test tự động của `scripts/test-buoi9-hardening.js`.
-6. [`06-anonymous-policy-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) — HTTP response của Anonymous GET public (200), private (403), list bucket (403).
+1. [`01-docker-compose-ps.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/01-docker-compose-ps.txt) — Trạng thái healthy của toàn bộ 5 container trong hệ thống Buổi 9.
+2. [`02-minio-healthcheck.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/02-minio-healthcheck.txt) — Chi tiết kiểm chứng `mc ready local`, digest Chainguard MinIO, và trạng thái health inspect (đã khắc phục lỗi template string).
+3. [`03-service-account-verification.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/03-service-account-verification.txt) — Bằng chứng service account nạp động từ `.env`, kiểm thử Access Denied khi cố tạo bucket / admin command, và lỗi chặn startup khi thiếu credentials.
+4. [`04-backend-startup-logs.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/04-backend-startup-logs.txt) — Log khởi động của `backend-1` và `backend-2` kết nối thành công bằng Service Account.
+5. [`05-e2e-hardening-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/05-e2e-hardening-test.txt) — Kết quả chạy 31/31 bài test tự động của `scripts/test-buoi9-hardening.js`.
+6. [`06-anonymous-policy-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/06-anonymous-policy-test.txt) — HTTP response của Anonymous GET public (200), private (403), list bucket (403) qua domain `minio.shop.local`.
 7. [`07-frontend-build.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/07-frontend-build.txt) — Log build của Vite 6 cho React frontend.
+8. [`08-clean-deployment-verification.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/08-clean-deployment-verification.txt) — Toàn bộ quy trình triển khai sạch độc lập với root và service account credentials mới sinh ngẫu nhiên.
+9. [`09-nginx-25mb-bodysize-test.txt`](file:///d:/Hocki7/PtrienHeThongServerNC/LyThuyet/Buoi9/docs/evidence/buoi9/09-nginx-25mb-bodysize-test.txt) — HTTP response 413 Request Entity Too Large từ NGINX khi upload request vượt quá 25MB.

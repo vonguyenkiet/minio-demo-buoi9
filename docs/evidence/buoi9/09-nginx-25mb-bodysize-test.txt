@@ -1,0 +1,23 @@
+============================================================
+NGINX 25MB client_max_body_size Enforcement Verification
+============================================================
+Timestamp: 2026-10-18T19:08:55.887Z
+
+[1] Attempt to upload 26MB (27,262,976 bytes) exceeding 25MB NGINX limit:
+Command: curl.exe -i -s -X POST -H "Content-Length: 27262976" -H "Content-Type: multipart/form-data" http://127.0.0.1/api/files
+
+[2] HTTP Response (Must be HTTP/1.1 413 Request Entity Too Large directly from NGINX):
+HTTP/1.1 413 Request Entity Too Large
+Server: nginx/1.30.5
+Date: Sun, 18 Oct 2026 19:08:55 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 183
+Connection: close
+
+<html>
+<head><title>413 Request Entity Too Large</title></head>
+<body>
+<center><h1>413 Request Entity Too Large</h1></center>
+<hr><center>nginx/1.30.5</center>
+</body>
+</html>

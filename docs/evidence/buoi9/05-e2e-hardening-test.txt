@@ -1,56 +1,61 @@
 ==============================================================================
 🚀 BẮT ĐẦU CHẠY TOÀN BỘ BÀI TEST CHẤP NHẬN & BẢO MẬT BUỔI 9
-⏰ Thời gian bắt đầu: 2026-10-18T18:22:32.981Z
+⏰ Thời gian bắt đầu: 2026-10-18T19:08:35.617Z
 ==============================================================================
 
 --- PHẦN 1: HEALTH CHECKS & KẾT NỐI DỊCH VỤ ---
-✅ [PASS] [Health] Backend Process Health (/health) - Instance: backend-1
-✅ [PASS] [Health] DB & MinIO Health (/health/db) - PostgreSQL & MinIO both OK
-✅ [PASS] [Health] NGINX Reverse Proxy Health (/nginx-health) - Stage: 06-minio-s3
+✅ [AC01] [PASS] [Health] Backend Process Health (/health) - Instance: backend-1
+✅ [AC02] [PASS] [Health] DB & MinIO Health (/health/db) - PostgreSQL & MinIO both OK
+✅ [AC03] [PASS] [Health] NGINX Reverse Proxy Health (/nginx-health) - Stage: 06-minio-s3
 
 --- PHẦN 2: BẢO MẬT P0 - MINIO CREDENTIALS SEPARATION ---
-✅ [PASS] [Security-P0] Backend Runtime Environment Isolation - Backend runtime uses buoi9_app_svc, zero root credentials present
-✅ [PASS] [Security-P0] Service Account Least Privilege (makeBucket blocked) - Access Denied returned as expected
-✅ [PASS] [Security-P0] No Fallback to Root on Missing Backend Credentials - Explicit configuration error thrown, zero fallback to root
+✅ [AC04] [PASS] [Security-P0] Backend Runtime Environment Isolation - Uses service account (buoi9_app_svc), zero root credentials present
+✅ [AC05] [PASS] [Security-P0] Service Account Least Privilege (makeBucket blocked) - Access Denied returned as expected
+✅ [AC06] [PASS] [Security-P0] No Fallback to Root on Missing Backend Credentials - Explicit configuration error thrown, zero fallback to root
+✅ [AC07] [PASS] [Security-P0] set-demo-policy.js Fails Fast on Missing Bucket - Script failed with exit code 1 when required bucket was missing
 
 --- PHẦN 3: BUCKET LISTING & ALLOWLIST VALIDATION ---
-✅ [PASS] [Storage-API] Get Demo Buckets Summary (/api/buckets) - Buckets: buoi9-assets, buoi9-assets-archive
-✅ [PASS] [Storage-API] Enforce Bucket Allowlist (Forbidden Bucket) - HTTP 403 Forbidden correctly returned
+✅ [AC08] [PASS] [Storage-API] Get Demo Buckets Summary (/api/buckets) - Buckets: buoi9-assets, buoi9-assets-archive
+✅ [AC09] [PASS] [Storage-API] Enforce Bucket Allowlist (Forbidden Bucket) - HTTP 403 Forbidden correctly returned
 
 --- PHẦN 4: OBJECT CRUD (UPLOAD, INFO, DOWNLOAD) ---
-✅ [PASS] [Storage-API] Upload Private Object (/api/files) - Key: private/e2e-test-1792347756428.txt, Size: 122 bytes
-✅ [PASS] [Storage-API] Download Object & Integrity Check (/api/files/download) - Downloaded content matches uploaded content exactly
+✅ [AC10] [PASS] [Storage-API] Upload Private Object (/api/files) - Key: private/e2e-test-1792350521704.txt, Size: 122 bytes
+✅ [AC11] [PASS] [Storage-API] Download Object & Integrity Check (/api/files/download) - Downloaded content matches uploaded content exactly
 
 --- PHẦN 5: PRESIGNED URL & AWS SIGNATURE V4 ---
-✅ [PASS] [Presigned-URL] Generate Presigned URL with AWS SigV4 (300s TTL) - Host: minio.shop.local, Algorithm: AWS4-HMAC-SHA256
-✅ [PASS] [Presigned-URL] Fetch Private Object via Presigned URL - HTTP 200 OK via minio.shop.local reverse proxy
-✅ [PASS] [Presigned-URL] Reject Tampered Presigned URL - HTTP 403 Forbidden (SignatureDoesNotMatch)
+✅ [AC12] [PASS] [Presigned-URL] Default Expiry (Omitted expiry defaults to 300s) - ExpiresIn: 300s
+✅ [AC13] [PASS] [Presigned-URL] Valid Custom TTL (expiry=60s) with SigV4 - Host: minio.shop.local, Algorithm: AWS4-HMAC-SHA256
+✅ [AC14] [PASS] [Presigned-URL] Fetch Private Object via Presigned URL - HTTP 200 OK via minio.shop.local reverse proxy
+✅ [AC15] [PASS] [Presigned-URL] Reject Tampered Presigned URL - HTTP 403 Forbidden (SignatureDoesNotMatch)
+✅ [AC16] [PASS] [Presigned-URL] Reject Expiry Zero or Negative (HTTP 400) - Zero & Negative TTL rejected with HTTP 400
+✅ [AC17] [PASS] [Presigned-URL] Reject Non-Integer / String TTL (HTTP 400) - String & Float TTL rejected with HTTP 400
+✅ [AC18] [PASS] [Presigned-URL] Reject Exceeded MAX_TTL Limit (HTTP 400) - Capped by PRESIGNED_URL_MAX_TTL_SECONDS (3600s), HTTP 400 returned
 
 --- PHẦN 6: ANONYMOUS ACCESS CONTROL (PUBLIC VS PRIVATE) ---
-✅ [PASS] [Security-Anonymous] Anonymous GET on Public Prefix (public/*) - HTTP 200 OK as permitted by policy
-✅ [PASS] [Security-Anonymous] Anonymous GET on Private Object Blocked - HTTP 403 Forbidden as required
-✅ [PASS] [Security-Anonymous] Anonymous ListBucket Blocked - HTTP 403 Forbidden
-✅ [PASS] [Security-Anonymous] Anonymous PutObject Blocked - HTTP 403 Forbidden
-✅ [PASS] [Security-Anonymous] Anonymous DeleteObject Blocked - HTTP 403 Forbidden
+✅ [AC19] [PASS] [Security-Anonymous] Anonymous GET on Public Prefix (public/*) - HTTP 200 OK as permitted by policy
+✅ [AC20] [PASS] [Security-Anonymous] Anonymous GET on Private Object Blocked - HTTP 403 Forbidden as required
+✅ [AC21] [PASS] [Security-Anonymous] Anonymous ListBucket Blocked - HTTP 403 Forbidden
+✅ [AC22] [PASS] [Security-Anonymous] Anonymous PutObject Blocked - HTTP 403 Forbidden
+✅ [AC23] [PASS] [Security-Anonymous] Anonymous DeleteObject Blocked - HTTP 403 Forbidden
 
 --- PHẦN 7: RENAME & MOVE AN TOÀN (COPY -> VERIFY -> DELETE) ---
-✅ [PASS] [Storage-Ops] Rename Object (Safe Copy -> Verify -> Delete) - Renamed private/e2e-test-1792347756428.txt -> private/e2e-renamed-1792347756523.txt
-✅ [PASS] [Storage-Ops] Move Object Across Buckets (buoi9-assets -> archive) - Moved to buoi9-assets-archive/archive/moved-1792347756567.txt
-✅ [PASS] [Storage-Ops] Delete Object (/api/files) - Cleaned up buoi9-assets-archive/archive/moved-1792347756567.txt
+✅ [AC24] [PASS] [Storage-Ops] Rename Object (Safe Copy -> Verify -> Delete) - Renamed private/e2e-test-1792350521704.txt -> private/e2e-renamed-1792350521848.txt
+✅ [AC25] [PASS] [Storage-Ops] Move Object Across Buckets (buoi9-assets -> archive) - Moved to buoi9-assets-archive/archive/moved-1792350521914.txt
+✅ [AC26] [PASS] [Storage-Ops] Delete Object (/api/files) - Cleaned up buoi9-assets-archive/archive/moved-1792350521914.txt
 
 --- PHẦN 8: VALIDATION & GIỚI HẠN DUNG LƯỢNG (HTTP 413) ---
-✅ [PASS] [Validation] Path Traversal Prevention in Key (../../) - HTTP 400 Bad Request
-✅ [PASS] [Validation] MIME Type & Extension Allowlist Filter - HTTP 400 Bad Request returned for unauthorized MIME
-✅ [PASS] [Validation] Upload Size Limit Enforcement (HTTP 413) - HTTP 413 Payload Too Large correctly returned
+✅ [AC27] [PASS] [Validation] Path Traversal Prevention in Key (../../) - HTTP 400 Bad Request
+✅ [AC28] [PASS] [Validation] MIME Type & Extension Allowlist Filter - HTTP 400 Bad Request returned for unauthorized MIME
+✅ [AC29] [PASS] [Validation] Upload Size Limit Enforcement (HTTP 413) - HTTP 413 Payload Too Large correctly returned
 
 --- PHẦN 9: LOAD BALANCING & BUỔI 8 COMPATIBILITY ---
-✅ [PASS] [Load-Balancing] Dual Backend Load Balancing (backend-1 & backend-2) - Instances served: backend-2, backend-1
-✅ [PASS] [Buoi8-Compat] Legacy Products API (/api/products) - Fetched 10 products successfully
+✅ [AC30] [PASS] [Load-Balancing] Dual Backend Load Balancing (backend-1 & backend-2) - Instances served: backend-1, backend-2
+✅ [AC31] [PASS] [Buoi8-Compat] Legacy Products API (/api/products) - Fetched 10 products successfully
 
 ==============================================================================
 📊 TỔNG KẾT KẾT QUẢ KIỂM THỬ:
-   - TỔNG CỘNG: 26 bài test
-   - PASS     : 26
+   - TỔNG CỘNG: 31 bài test
+   - PASS     : 31
    - FAIL     : 0
 ==============================================================================
 

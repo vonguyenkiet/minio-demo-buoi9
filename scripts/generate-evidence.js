@@ -17,6 +17,29 @@ function runCmd(cmd) {
   }
 }
 
+function loadEnv() {
+  const envPath = path.join(__dirname, '..', '.env');
+  const envMap = {};
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#') || !line.includes('=')) continue;
+      const idx = line.indexOf('=');
+      const key = line.slice(0, idx).trim();
+      let val = line.slice(idx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      envMap[key] = val;
+    }
+  }
+  return envMap;
+}
+
+const envConfig = loadEnv();
+const svcKey = envConfig.MINIO_BACKEND_ACCESS_KEY || 'buoi9_app_svc';
+
 console.log('Generating Buoi 9 evidence files in:', EVIDENCE_DIR);
 
 // 1. Docker Compose PS
@@ -26,9 +49,9 @@ fs.writeFileSync(path.join(EVIDENCE_DIR, '01-docker-compose-ps.txt'), psOut, 'ut
 
 // 2. Healthcheck Verification
 console.log('Capturing 02-minio-healthcheck.txt...');
-const imageOut = runCmd("docker inspect --format='{{.Config.Image}}' minio-demo-buoi9-minio-1");
+const imageOut = runCmd('docker inspect --format="{{.Config.Image}}" minio-demo-buoi9-minio-1');
 const mcVerOut = runCmd('docker compose exec -T minio mc --version');
-const healthOut = runCmd("docker inspect --format='{{json .State.Health}}' minio-demo-buoi9-minio-1");
+const healthOut = runCmd('docker inspect --format="{{json .State.Health}}" minio-demo-buoi9-minio-1');
 const healthDoc = [
   '============================================================',
   'MinIO Healthcheck Verification (Pinned Digest & /usr/bin/mc)',
@@ -51,7 +74,7 @@ fs.writeFileSync(path.join(EVIDENCE_DIR, '02-minio-healthcheck.txt'), healthDoc,
 
 // 3. Service Account Least Privilege Verification
 console.log('Capturing 03-service-account-verification.txt...');
-const svcInfoOut = runCmd('docker compose exec -T minio mc admin user svcacct info minioadmin buoi9_app_svc');
+const svcInfoOut = runCmd(`docker compose exec -T minio mc admin user svcacct info minioadmin ${svcKey}`);
 const blockMbOut = runCmd('docker compose exec -T minio mc mb testsvc/hacked-bucket');
 const blockAdminOut = runCmd('docker compose exec -T minio mc admin user ls testsvc');
 const missingCredsOut = runCmd('docker compose run --rm -e MINIO_ACCESS_KEY="" -e MINIO_SECRET_KEY="" backend-1 node -e "require(\'./src/config/minio\')"');
@@ -61,7 +84,7 @@ const svcDoc = [
   '============================================================',
   `Timestamp: ${new Date().toISOString()}`,
   '',
-  '[1] Service Account Metadata & Status (buoi9_app_svc):',
+  `[1] Service Account Metadata & Status (${svcKey}):`,
   svcInfoOut.trim(),
   '',
   '[2] Blocked Action: Attempt to makeBucket with Service Account (Must be Access Denied):',
@@ -124,5 +147,27 @@ fs.writeFileSync(path.join(EVIDENCE_DIR, '06-anonymous-policy-test.txt'), anonDo
 console.log('Capturing 07-frontend-build.txt...');
 const feBuild = runCmd('npm --prefix frontend run build');
 fs.writeFileSync(path.join(EVIDENCE_DIR, '07-frontend-build.txt'), feBuild, 'utf8');
+
+// 8. Clean Deployment Verification (Isolated Container with Fresh Credentials)
+console.log('Capturing 08-clean-deployment-verification.txt...');
+const cleanDepOut = runCmd('node scripts/verify-clean-deployment.js');
+fs.writeFileSync(path.join(EVIDENCE_DIR, '08-clean-deployment-verification.txt'), cleanDepOut, 'utf8');
+
+// 9. NGINX 25MB Body Size Limit Enforcement
+console.log('Capturing 09-nginx-25mb-bodysize-test.txt...');
+const nginx26mbOut = runCmd('curl.exe -i -s -X POST -H "Content-Length: 27262976" -H "Content-Type: multipart/form-data; boundary=----WebKitFormBoundary" http://127.0.0.1/api/files');
+const nginx25mbDoc = [
+  '============================================================',
+  'NGINX 25MB client_max_body_size Enforcement Verification',
+  '============================================================',
+  `Timestamp: ${new Date().toISOString()}`,
+  '',
+  '[1] Attempt to upload 26MB (27,262,976 bytes) exceeding 25MB NGINX limit:',
+  'Command: curl.exe -i -s -X POST -H "Content-Length: 27262976" -H "Content-Type: multipart/form-data" http://127.0.0.1/api/files',
+  '',
+  '[2] HTTP Response (Must be HTTP/1.1 413 Request Entity Too Large directly from NGINX):',
+  nginx26mbOut.trim(),
+].join('\n');
+fs.writeFileSync(path.join(EVIDENCE_DIR, '09-nginx-25mb-bodysize-test.txt'), nginx25mbDoc, 'utf8');
 
 console.log('All Buoi 9 evidence files generated successfully in docs/evidence/buoi9/!');
